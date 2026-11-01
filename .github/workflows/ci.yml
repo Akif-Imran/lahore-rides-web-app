@@ -1,0 +1,132 @@
+# Continuous integration: every push to main and every pull request.
+#   backend   lint, types, format, unit tests, integration tests against a real Postgres 16,
+#             OpenAPI drift check, production dependency audit
+#   frontend  lint, types, format, unit + component tests, API-types drift check, build, audit
+#   e2e       the full Docker Compose stack (as a reviewer runs it) + Playwright
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # Throwaway CI container; the same local-demo placeholder as .env.example.
+          POSTGRES_USER: ridebooking
+          POSTGRES_PASSWORD: change_me
+          POSTGRES_DB: ridebooking_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ridebooking -d ridebooking_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The integration suite refuses any database whose name does not end in _test.
+      TEST_DATABASE_URL: postgres://ridebooking:change_me@localhost:5432/ridebooking_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - name: Unit tests
+        run: npm test
+      - name: Integration tests (real PostgreSQL, includes the concurrency races)
+        run: npm run test:int
+      - name: OpenAPI spec matches the code
+        run: |
+          npm run openapi:export
+          git diff --exit-code -- openapi.json
+      - name: No known vulnerabilities in production dependencies
+        run: npm audit --omit=dev
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - name: Unit and component tests
+        run: npm test
+      - name: API types match backend/openapi.json
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/types/api.gen.ts
+      - run: npm run build
+      - name: No known vulnerabilities in production dependencies
+        run: npm audit --omit=dev
+
+  e2e:
+    name: End-to-end (Docker Compose + Playwright)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Start the stack exactly as the README does
+        run: |
+          cp .env.example .env
+          docker compose up --build -d --wait
+      - name: Install Playwright and Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Playwright end-to-end tests
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

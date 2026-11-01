@@ -254,3 +254,38 @@ Next is **Phase 9**, the last one:
 - A final check from a fresh clone.
 
 Say continue when you're ready.
+
+--- PHASE 9 SUMMARY ---
+Phase 9, the last build phase, is finished and committed as `ci, docs: CI pipeline, architecture document, final README and hardening (phase 9)`.
+
+**CI** (`.github/workflows/ci.yml`) has three jobs:
+- **backend:** lint, types, format, unit tests, integration tests against a Postgres 16 service, a check that `openapi.json` matches the code, and an audit of production dependencies;
+- **frontend:** lint, types, format, unit and component tests, a check that the API types match the spec, the build, and an audit of production dependencies;
+- **e2e:** starts the stack with the README's own commands, runs Playwright, and uploads the report on failure.
+
+It passes `actionlint`. I replayed the backend and frontend jobs locally, and the fresh-clone check below runs the e2e job's exact commands. It hasn't run on GitHub yet, because nothing is pushed.
+
+**Docs**
+- **`docs/ARCHITECTURE.md`:** answers the eight questions, each tied to the code and tests behind it. It also has a system overview, the ride lifecycle, the accept-race diagram, the error matrix, assumptions and known limitations.
+- **README:** demo identities, a copy-paste `curl` walkthrough (estimate, request, replayed retry, two-driver race, complete, rejected illegal cancel), CI and the full repository map.
+- **DECISIONS:** D32 (dependency audit) and D33 (CI design).
+
+**Hardening**
+- **Production dependencies:** 0 advisories in both packages, now enforced by CI. The backend's 3 came from `node-pg-migrate` pinning an old `glob`. An override fixes that without the downgrade npm suggested, and it was verified through every migration path.
+- **Dev-only advisories accepted and documented:** 18 frontend and 2 backend, all in ESLint and Nest CLI tooling. The available fixes are major downgrades, and none of it ships in an image.
+- **Secret scan:** tracked files and the full git history are clean; only `.env.example` templates are tracked.
+- **Leftovers:** no TODOs, debug logging, focused tests or scaffold remnants.
+
+**Fresh-clone check:** I cloned into a scratch folder and deleted the images, the database volume and Docker's build cache. Then I ran `cp .env.example .env && docker compose up --build -d --wait`, and everything was healthy in 102 s. From the clone, all of these passed:
+- backend: 453 unit and 107 integration tests;
+- frontend: 131 tests;
+- both drift checks;
+- E2E: 5/5;
+- Swagger, and the README's `curl` walkthrough.
+
+**Found during the phase**
+- **Diagram errors:** rendering every Mermaid diagram caught a parse error in my own accept-race diagram, because a `;` ends a statement in Mermaid. Fixed. It also showed that two diagrams in `docs/blueprint.md` don't render on GitHub. That's your source spec, so I left it untouched; ARCHITECTURE.md has working versions.
+- **ETA formula:** checking ARCHITECTURE.md against the code caught that I had left the ×1.3 road factor out of it.
+- **My own slip:** while testing the README snippet in the clone, my extraction also ran the README's later dev-server block. I stopped it; it only touched the throwaway clone.
+
+Next is the onboarding suite you asked for: the glossary and module guide, the request-flow diagrams, the plug-and-play README and `setup.sh`.

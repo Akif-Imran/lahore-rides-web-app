@@ -205,3 +205,44 @@ One entry per phase: what was generated, and how it was verified.
     - **lost response (23b):** the ride was committed (`201`), the browser saw a connection reset, the retry was a `200` with `Idempotent-Replayed: true` and the same ride id, and the API reports exactly that ride as the rider's active ride;
     - **driver race:** exactly one browser shows "Ride accepted" and the other "Another driver took this ride.", and the API confirms the winner is the ride's driver.
   - **Gates unchanged:** frontend lint, typecheck, format check and 131 unit/component tests pass. The E2E files are type-checked as part of `npm run typecheck`.
+
+### Phase 9: CI, architecture document, final README, hardening
+- **Generated:**
+  - `.github/workflows/ci.yml` (backend, frontend and e2e jobs);
+  - `docs/ARCHITECTURE.md` (the eight answers, diagrams, error matrix, assumptions, limitations);
+  - README additions: demo identities, the `curl` walkthrough, CI and the repository map;
+  - DECISIONS D32–D33;
+  - the backend `overrides` entry for `glob`.
+- **Verified:**
+  - **CI workflow:**
+    - **actionlint 1.7.12**, run in its pinned Docker image, which also shellchecks every `run:` step: no findings.
+    - **Action versions** came from the actions' own git tags rather than memory: `checkout`, `setup-node` and `upload-artifact` are at v7.
+    - **The backend and frontend jobs were replayed locally**, step by step from `npm ci`, and passed. The e2e job's exact commands ran in the fresh-clone check below.
+    - **It has not yet run on GitHub**, because nothing has been pushed.
+  - **Dependency audit:**
+    - The backend's three production advisories come from one chain, `node-pg-migrate` → `glob` → `minimatch`. The override to `glob` 14.0.3 was checked against `node-pg-migrate`'s actual use (only the named `glob()` export). It was then exercised through every migration path:
+      - CLI migrate down and up on the test database;
+      - the 107-test integration suite, which migrates in its global setup;
+      - the Docker `migrate` job from a clean clone.
+    - `npm audit --omit=dev` reports 0 in both packages.
+    - The dev-only advisories were traced to ESLint and Nest CLI tooling, and accepted with reasons (D32).
+  - **Diagrams:** every Mermaid block was rendered with mermaid 12.2.0 in headless Chromium, and the system overview was checked as an image.
+    - This **caught a parse error in my own** accept-race sequence diagram: a `;` inside a message ends the statement in Mermaid. Fixed.
+    - It also showed that two diagrams in `docs/blueprint.md` (3.5 and 4.5) fail to parse. That is the user's source spec, so it was left untouched; ARCHITECTURE.md has working equivalents.
+  - **Facts cross-checked against the code:** index names, the lock and compare-and-swap SQL, the pool timeouts, the ETA formula and the fare constants.
+    - This caught one error in the first draft: the ETA formula left out the ×1.3 road factor.
+    - One wording was also corrected: Redis support in the throttler comes through pluggable storage.
+  - **README `curl` walkthrough:** run verbatim against the stack twice, then again from the README file inside the clean clone. The first run caught a case-sensitive header `grep` (Express sends `Location`, not `location`).
+  - **Secret scan:**
+    - Tracked files and the **entire git history** were searched for private keys, cloud and API tokens, and real `.env`/`.pem`/`.key` files. Only the three `.env.example` templates are tracked.
+    - The one `password=` hit is a deliberate fake inside a test that asserts internal errors never reach clients.
+  - **Leftovers:** no TODO/FIXME, no `console.log` in app source, no focused or skipped tests, no scaffold files.
+  - **Fresh-clone check:**
+    - **Setup:** stopped the stack, then deleted the database volume, both app images and the Docker build cache. Ran `git clone` into the scratchpad, then `cp .env.example .env && docker compose up --build -d --wait`. Every service was healthy in 102 s; migrate exited 0 and both databases existed.
+    - **Results from the clone, after fresh `npm ci` installs:**
+      - backend: lint, typecheck, format check, 453 unit and 107 integration tests;
+      - frontend: lint, typecheck, format check and 131 tests;
+      - both contract drift checks;
+      - Playwright 5/5;
+      - Swagger UI, `/docs-json`, readiness and both app pages returned 200.
+  - **A mistake during verification:** to run the README's `curl` block inside the clone, I extracted everything after its first line. That also captured the README's *later* blocks, so the backend dev instructions ran too, ending in the long-running `npm run start:dev`. It touched only the throwaway clone and its own demo database (a no-op migrate and an idempotent seed). I stopped the stray processes and restored the main stack.

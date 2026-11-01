@@ -224,6 +224,24 @@ The blueprint fixes the transition table and the error codes. These rules fill i
   - **Why 23b matters:** blueprint 23's "exactly one ride" would also hold *without* idempotency. The one-active-ride unique index would answer a duplicate with `409 ACTIVE_RIDE_EXISTS`, and the UI would follow it to the existing ride. Only asserting the *replay* proves the Idempotency-Key path itself. Rebuilding the frontend so it sends a new key on every attempt makes both test 23 variants fail.
 - **Locators:** role- and test-id-based, scoped by text where needed. Next's production build renders its own empty `role="alert"` route announcer, so a bare `getByRole('alert')` is ambiguous.
 
+## D32. Dependency audit: production dependencies at zero advisories, dev-only advisories accepted
+- **Backend production:** `node-pg-migrate` 9.0.0, the latest, pins `glob ~13.0.0`, which brings in a `minimatch` with a moderate advisory. npm's only suggested fix was *downgrading* to `node-pg-migrate` 7. Instead, `backend/package.json` has an `overrides` entry forcing `glob ^14.0.3`, which pulls in `minimatch` 11.0.3. `node-pg-migrate` only uses glob's named `glob()` export, which glob 14 keeps. It was verified through every migration path: CLI down/up on the test database, the integration suite's own migration run, and the Docker `migrate` job in the fresh-clone check. Result: `npm audit --omit=dev` reports 0 in both packages, and CI enforces it.
+- **Accepted, dev-only:**
+  - **Frontend:** 18 moderate advisories, all rooted in older `minimatch` versions inside ESLint 9's plugin ecosystem (`eslint-config-next`, `typescript-eslint`) and `openapi-typescript`'s Redocly dependency.
+  - **Backend:** 2 moderate advisories from `@nestjs/cli`'s `minimatch`.
+
+  npm's suggested "fixes" are major downgrades (ESLint 4, `eslint-config-next` 12, Nest CLI 11). A global `minimatch` override would break ESLint, which still uses minimatch 3's default export. These tools only read the repo's own files on a developer or CI machine, and none of them ships in an image: the backend runtime image installs with `--omit=dev`, and the frontend image contains only Next's standalone output. Revisit when the upstream packages update.
+- **Why:** a clean production audit that CI enforces means a newly published advisory fails the build. A blanket override that breaks the linter would trade a theoretical risk for a real one.
+
+## D33. CI mirrors the documented local workflow
+- **Decision:** one workflow, three jobs:
+  - **backend:** Postgres 16 as a service container;
+  - **frontend:** no services;
+  - **e2e:** runs after both pass. It starts the real Compose stack with the README's own commands and runs Playwright.
+
+  Both drift checks run there: the regenerated `openapi.json` and `api.gen.ts` must not differ from the committed ones. The workflow pins actions to their current major versions (`checkout`, `setup-node` and `upload-artifact` v7), takes Node from `.nvmrc`, has read-only `contents` permission, and cancels superseded runs. It passes `actionlint` 1.7.12, which also shellchecks every `run:` script.
+- **Why:** CI should fail for the same reasons a reviewer's machine would. The e2e job exercises the Docker images, the migrate job, CORS and the production CSP, which unit tests cannot see.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

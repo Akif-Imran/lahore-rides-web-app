@@ -1,35 +1,27 @@
 # Project context: Lahore ride-booking assessment
 
-Continuity file for future sessions and context compactions. Read this first, then `CLAUDE.md`, `docs/blueprint.md` (Step 5 is the build spec) and `docs/DECISIONS.md` (D1–D31).
+Continuity file for future sessions and context compactions. Read this first, then `CLAUDE.md`, `docs/blueprint.md` (Step 5 is the build spec), `docs/ARCHITECTURE.md` and `docs/DECISIONS.md` (D1–D33).
 
 ## Current state (2026-11-02)
-- **Done:** Phases 0–8. Each phase is one commit, findable with `git log --oneline` (messages end in `(phase N)`).
-  - The whole stack runs with `docker compose up --build -d --wait`.
-  - `make e2e` runs 5 Playwright tests against it in about 25 s.
-- **Next:** Phase 9, the last phase:
-  - `.github/workflows/ci.yml` with three jobs:
-    - **backend:** a Postgres 16 service, lint, typecheck, unit tests, then integration tests on the test database;
-    - **frontend:** lint, typecheck, Vitest, the `gen:api` drift check (`git diff --exit-code`), `next build`;
-    - **e2e:** `cp .env.example .env`, `docker compose up --build -d --wait`, `make e2e`, and upload `playwright-report` on failure.
-  - `docs/ARCHITECTURE.md`: the 8 answers from blueprint 5.7, the Mermaid diagrams (3.2, 3.5, 4.4, 4.5), the error matrix, assumptions, known limitations and improvements.
-  - Final README, plus DECISIONS and AI_DISCLOSURE.
-  - Hardening sweep:
-    - secret scan;
-    - `npm audit` (backend: node-pg-migrate's `glob`; frontend: 16 dev-only ESLint-tooling advisories);
-    - remove leftovers.
-  - Final check from a fresh `git clone` into the scratchpad.
-- **Notes for Phase 9:**
-  - CI's backend integration tests need `TEST_DATABASE_URL` with a database name ending in `_test` (a guard enforces it).
-  - The e2e job needs `npx playwright install --with-deps chromium` on the Ubuntu runner.
-  - Known limitations to list:
-    - header-based demo identity, and the spoofable rate-limit key that comes with it;
-    - Haversine-only distance;
-    - polling instead of push;
-    - no payments;
-    - a driver cancelling sends the ride to `CANCELLED`, not back to the queue;
-    - CSP still needs `'unsafe-inline'` scripts;
-    - light theme only;
-    - landmarks only, no geocoding.
+- **Done:** all build phases, 0–9. Each phase is one commit, findable with `git log --oneline` (messages end in `(phase N)`).
+  - CI is `.github/workflows/ci.yml`.
+  - The architecture answers are in `docs/ARCHITECTURE.md`.
+  - A fresh-clone check passed every suite.
+- **In progress:** the user's onboarding suite, requested after Phase 8 and done after Phase 9:
+  1. **A glossary and module architecture doc:**
+     - terms such as "expiry sweeper" and "concurrency control";
+     - the modules: state machine, expiry sweeper, rate limiting, error handling, auth, idempotency.
+  2. **Mermaid sequence diagrams** of how requests traverse the backend modules, with green and red paths and endpoint mappings.
+  3. **A plug-and-play README rewrite** with:
+     - a prerequisites checklist and a features summary (state machine, concurrency control, ACID);
+     - setup for the database, frontend, backend, Docker and env vars;
+     - every npm script explained;
+     - testing and reliability.
+  4. **A root `setup.sh`:** pre-flight checks (Docker installed and running, Compose, Node), `.env` files populated, the stack started and verified healthy, with graceful, actionable failure messages.
+- **Notes for the onboarding suite:**
+  - Mermaid: no `;` inside sequence messages (it ends a statement).
+  - Validate every diagram by rendering it. A throwaway renderer is in the session scratchpad: `mermaid-check/check.mjs`, using mermaid 12.2.0 and Playwright's Chromium.
+  - `docs/blueprint.md` diagrams 3.5 and 4.5 do not parse; leave that file untouched.
 - **Full build plan:** `/Users/akif.dev/.claude/plans/docs-assessment-pdf-docs-blueprint-md-i-federated-sunrise.md`
 
 ## Working agreements
@@ -292,5 +284,40 @@ Next is **Phase 9**, the last one:
 - A final check from a fresh clone.
 
 Say continue when you're ready.
+
+--- PHASE 9 SUMMARY ---
+Phase 9, the last build phase, is finished and committed as `ci, docs: CI pipeline, architecture document, final README and hardening (phase 9)`.
+
+**CI** (`.github/workflows/ci.yml`) has three jobs:
+- **backend:** lint, types, format, unit tests, integration tests against a Postgres 16 service, a check that `openapi.json` matches the code, and an audit of production dependencies;
+- **frontend:** lint, types, format, unit and component tests, a check that the API types match the spec, the build, and an audit of production dependencies;
+- **e2e:** starts the stack with the README's own commands, runs Playwright, and uploads the report on failure.
+
+It passes `actionlint`. I replayed the backend and frontend jobs locally, and the fresh-clone check below runs the e2e job's exact commands. It hasn't run on GitHub yet, because nothing is pushed.
+
+**Docs**
+- **`docs/ARCHITECTURE.md`:** answers the eight questions, each tied to the code and tests behind it. It also has a system overview, the ride lifecycle, the accept-race diagram, the error matrix, assumptions and known limitations.
+- **README:** demo identities, a copy-paste `curl` walkthrough (estimate, request, replayed retry, two-driver race, complete, rejected illegal cancel), CI and the full repository map.
+- **DECISIONS:** D32 (dependency audit) and D33 (CI design).
+
+**Hardening**
+- **Production dependencies:** 0 advisories in both packages, now enforced by CI. The backend's 3 came from `node-pg-migrate` pinning an old `glob`. An override fixes that without the downgrade npm suggested, and it was verified through every migration path.
+- **Dev-only advisories accepted and documented:** 18 frontend and 2 backend, all in ESLint and Nest CLI tooling. The available fixes are major downgrades, and none of it ships in an image.
+- **Secret scan:** tracked files and the full git history are clean; only `.env.example` templates are tracked.
+- **Leftovers:** no TODOs, debug logging, focused tests or scaffold remnants.
+
+**Fresh-clone check:** I cloned into a scratch folder and deleted the images, the database volume and Docker's build cache. Then I ran `cp .env.example .env && docker compose up --build -d --wait`, and everything was healthy in 102 s. From the clone, all of these passed:
+- backend: 453 unit and 107 integration tests;
+- frontend: 131 tests;
+- both drift checks;
+- E2E: 5/5;
+- Swagger, and the README's `curl` walkthrough.
+
+**Found during the phase**
+- **Diagram errors:** rendering every Mermaid diagram caught a parse error in my own accept-race diagram, because a `;` ends a statement in Mermaid. Fixed. It also showed that two diagrams in `docs/blueprint.md` don't render on GitHub. That's your source spec, so I left it untouched; ARCHITECTURE.md has working versions.
+- **ETA formula:** checking ARCHITECTURE.md against the code caught that I had left the ×1.3 road factor out of it.
+- **My own slip:** while testing the README snippet in the clone, my extraction also ran the README's later dev-server block. I stopped it; it only touched the throwaway clone.
+
+Next is the onboarding suite you asked for: the glossary and module guide, the request-flow diagrams, the plug-and-play README and `setup.sh`.
 
 === END OF COMPLETE HISTORY ===
