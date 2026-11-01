@@ -25,9 +25,15 @@ npm install
 npm run migrate:up          # apply SQL migrations
 npm run seed                # idempotent demo riders/drivers (npm run seed:reset wipes rides)
 npm run start:dev           # http://localhost:3001/api/v1/health/ready
-npm test                    # unit tests
+npm test                    # unit tests (no database)
+npm run test:int            # integration tests against ridebooking_test (compose Postgres)
 npm run lint && npm run typecheck
 ```
+
+`make test-backend` starts Postgres if needed and runs both suites. The integration tests:
+- use the real app against real PostgreSQL;
+- refuse to run unless the database name ends in `_test`;
+- include concurrency races, e.g. 10 drivers accepting the same ride, repeated 20 times.
 
 ## Repository layout
 ```

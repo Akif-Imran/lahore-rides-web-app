@@ -80,3 +80,22 @@ One entry per phase: what was generated, and how it was verified.
   - **OpenAPI export.** Runs with no database and is byte-identical across two runs, which the CI drift check needs. Nullable references use the OpenAPI 3.0 `allOf` form.
   - Structured logs carry the request id on business events (`ride.assigned`, …) and `errorCode` on 4xx lines.
   - `typecheck`, `lint` and `format:check` pass. The new pure modules have 91–100% line coverage; the remaining wiring is covered by Phase 4's integration tests.
+
+### Phase 4: Integration and concurrency tests (real PostgreSQL)
+- **Generated:**
+  - the integration harness: real `AppModule` + `configureApp`, ephemeral port, test database, global migrations, and a guard that refuses any database not named `*_test`;
+  - fixtures, factories, an error-envelope schema, and a SQL invariant checker;
+  - 12 spec files, 107 tests covering blueprint tests 5–16, the expiry sweeper, rate limiting and database-level constraints.
+- **Verified:**
+  - **Consistency across runs:** `npm run test:int` passed three full runs in a row (~9 s each), then again via `make test-backend`.
+  - **Defence-in-depth mutation check** on the 10-driver race:
+    - without the row lock (`FOR UPDATE`), still exactly one winner, held by the compare-and-swap `UPDATE`;
+    - without the lock *and* the CAS, still one winner, held by the partial unique index;
+    - without the assignment insert as well (no index backstop), the tests **fail** and detect multiple winners.
+    Source was restored, `git diff` was empty, and the tests pass again.
+  - **A race that wasn't racing:** the first accept-vs-cancel version only ever produced one interleaving. Fixed by alternating which request is sent first, so both orders now occur. Two deterministic tests also force each order by holding the row lock and checking via `pg_stat_activity` that the requests are queued behind it.
+  - **The blueprint's sequence diagram 4.5, reproduced deterministically:** a second accepter blocks on the ride lock, then sees the committed winner and gets `409 RIDE_ALREADY_ASSIGNED`.
+  - **Mistakes caught during the phase** (test code, not app code):
+    - typecheck caught helper calls with a missing `pool` argument;
+    - one test wrongly assumed which CHECK constraint Postgres would report when a value violates two.
+  - Integration coverage is 93% of lines in `src`; the gaps are covered by unit tests or are scripts.

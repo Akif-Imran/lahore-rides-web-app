@@ -21,6 +21,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
+    "test:int": "vitest run --config ./vitest.config.int.ts",
+    "test:int:cov": "vitest run --config ./vitest.config.int.ts --coverage",
     "migrate:up": "tsx --env-file-if-exists=.env src/scripts/migrate.ts up",
     "migrate:down": "tsx --env-file-if-exists=.env src/scripts/migrate.ts down",
     "migrate:create": "node-pg-migrate create --migration-file-language sql --migrations-dir migrations",

@@ -100,6 +100,14 @@ The blueprint fixes the transition table and the error codes. These rules fill i
 - **Decision:** `RideExpiryScheduler` runs every 30 s when `RIDE_EXPIRY_SWEEP_ENABLED`, registered through `@nestjs/schedule`'s `SchedulerRegistry` so it is cleared on shutdown. Integration tests disable it and call `sweep()` directly.
 - **Why:** the work is a single conditional `UPDATE … WHERE status = 'REQUESTED' AND requested_at < now() - ttl`, which is safe on every replica at once. An accept holding the row lock makes the sweep wait and re-check, so a just-assigned ride is never expired.
 
+## D22. Blueprint test 10 (accept vs cancel race): adjusted expectation, plus forced interleavings
+- **Blueprint:** "parallel accept and cancel: either ASSIGNED with the cancel rejected, or CANCELLED with the accept rejected, never both."
+- **Why it was adjusted:** the blueprint's own state machine (3.2) lets the rider cancel an `ASSIGNED` ride. If the accept commits first, the cancel then legitimately succeeds as well. So "accept 200, then cancel 200, final `CANCELLED`, driver freed" is a correct outcome, not a bug.
+- **What the tests check instead** (`test/concurrency.int-spec.ts`):
+  - **Random race:** both requests are sent at once, 20 times, alternating which goes first, and both orders do occur. After each run the database must be fully consistent: no `BUSY` driver without an active assignment, no active assignment on a cancelled ride, and so on (`assertInvariants`).
+  - **Forced interleavings:** the test holds the ride's row lock, queues the two requests behind it in a chosen order (checked through `pg_stat_activity`), then releases it. One test runs accept-then-cancel and the other cancel-then-accept, each with exact expected results.
+  - **Start vs cancel:** the race where "never both" genuinely holds, because cancelling is illegal once a trip has started.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.
