@@ -188,3 +188,33 @@ Next is **Phase 7**:
 - the frontend Dockerfile and its Compose service, so `docker compose up` starts the whole stack.
 
 Say continue when you're ready.
+
+--- PHASE 7 SUMMARY ---
+Phase 7 is finished and committed as `test(frontend): component tests and frontend Docker image (phase 7)`. The whole app now starts with one command, and the frontend's behaviour under failure is covered by tests. Stopping here for your review.
+
+**Component tests:** 46 new, 131 frontend tests in total, about 3.5 s.
+
+| Blueprint test | What's covered |
+|---|---|
+| 17, booking form | Request stays disabled until the trip is valid and priced; the same pickup and destination is rejected without asking for a fare; an empty field is explained when left; only listed landmarks are accepted; keyboard use of the location picker; swap; "View ride" and a blocked second booking while a ride is active |
+| 18, fare card | Loading skeleton; fare, ETA and the other category's price; "No drivers nearby" with a hint about the other category; error with Retry. In the form: a 5xx is retried 3 times before the error shows and Retry recovers; a 4xx is not retried |
+| 19, request flow | Spinner and locked form; one request on a double-click, and on two submits faster than a re-render; after a network error or a 5xx, Retry sends the **same Idempotency-Key**; a changed trip gets a new key; 409 opens the existing ride; 400 shows field errors; 429 shows a countdown |
+| 20, ride status | Every status renders, with Cancel only where allowed; polling follows the ride to the end and then stops; polling pauses in a hidden tab; "Reconnecting…" keeps the last status, and "Retry now" works mid-backoff; cancel with confirmation; 409 on cancel; not found; a failed first load recovers on Retry |
+| extra, driver console | Marked as a simulation; a lost race shows "Another driver took this ride."; going online; start, then complete |
+
+The tests mock the API at the network level with MSW and use the app's real query client. That means the real API client, headers and retry rules run in every test.
+
+**Checking the tests themselves:** I broke five behaviours on purpose, one at a time. Four were caught straight away. Making "Retry now" unclickable during automatic retries was not. The test's fast retry setting meant it clicked after the retries had finished, never during the window where the original bug lived. I strengthened that test, and it now catches the break.
+
+**Docker**
+- `docker compose up --build -d --wait` now starts four services in order: postgres, migrate, backend, frontend, each waiting for the one before.
+- **From nothing:** with the containers, the database and both images deleted, everything was healthy in 23 s, using a warm build cache. A machine with no Docker cache needs a few minutes for the first build.
+- **Locked down like the backend:** the frontend container runs as a non-root user, on a read-only filesystem apart from `/tmp` and Next's cache, with no Linux privileges. It stops cleanly in about 0.2 s.
+- The same 16-check browser run passed against the container, both before and after the from-scratch rebuild.
+- The backend still passes its 453 unit and 107 integration tests against the recreated database.
+
+**Choices worth a look** (DECISIONS D29–D30)
+- **The API URL is baked into the frontend at build time.** Next requires this for settings the browser uses, so changing it needs `docker compose up --build`. `.env.example` and the README say so.
+- **The tests use real timers with shortened intervals** rather than fake timers. That keeps them simple and fast, and the mutation check shows they still catch regressions.
+
+Next is **Phase 8**: Playwright end-to-end tests against the running stack. These are the main booking flow with a second browser acting as the driver, the cancel flow, and a forced failure followed by a retry that creates exactly one ride (blueprint tests 21–23). Say continue when you're ready.

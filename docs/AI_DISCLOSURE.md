@@ -153,3 +153,33 @@ One entry per phase: what was generated, and how it was verified.
     - **A wrong claim in the docs:** the new coverage test showed DECISIONS D17's "every landmark has an Economy driver within 5 km" was imprecise (Packages Mall relies on a Comfort car). The app was right; D17 was corrected and the test now enforces the accurate claim.
   - **A false alarm, investigated:** one run logged a hydration-mismatch warning about an inline `caret-color` style. A page load with no screenshot gave no warning on any page. The cause was the test script screenshotting before hydration finished, not the app, so the script now waits for network idle first.
   - **Dependencies:** `npm audit --omit=dev` reports 0 production vulnerabilities in the frontend. 16 moderate advisories are in dev-only ESLint tooling and go to the Phase 9 sweep.
+
+### Phase 7: Frontend component tests and frontend Docker
+- **Generated:**
+  - test helpers: the MSW server lifecycle, an error-envelope builder, a render helper using the app's real query client, typed fixtures, and booking-flow helpers;
+  - 46 component tests in five files:
+    - blueprint 17: booking-form validation, 7 tests;
+    - blueprint 18: fare-card states, 9 tests;
+    - blueprint 19: the request flow and Idempotency-Key reuse, 9 tests;
+    - blueprint 20: ride status and polling, 17 tests;
+    - the driver console, 4 tests;
+  - `frontend/Dockerfile`, `frontend/.dockerignore`, the `frontend` Compose service, and README/`.env.example` updates.
+- **Verified:**
+  - **Library API checked, not assumed:** MSW 3's type definitions showed the strict-mode option is now `onUnhandledFrame`, not v2's `onUnhandledRequest`, so the code uses the v3 name.
+  - **Mutation check of the tests.** Five behaviours were broken in the source, one at a time; each must make a test fail. The source was restored from git after each.
+    - removing the double-submit guard: 1 test failed;
+    - minting a new Idempotency-Key on every attempt: 3 failed;
+    - polling past a terminal status: 1 failed;
+    - polling while the tab is hidden: 1 failed;
+    - disabling "Retry now" during automatic retries: **0 failed at first**. The reconnect test used a 5 ms backoff, so the retries were over before it clicked, and it never exercised the window where the original bug lived. The test now runs with a 5 s backoff and checks that the button is enabled and recovers within 1 s, which only a working manual retry can do. That mutation now fails it.
+  - **Gates:**
+    - frontend: lint, typecheck, format check and 131 tests (85 unit + 46 component, about 3.5 s);
+    - backend: lint, typecheck, 453 unit and 107 integration tests, re-run after the database volume was recreated.
+  - **Docker, from nothing:** `docker compose down -v`, both images deleted, then `docker compose up --build -d --wait`. The order held: postgres healthy, migrate (migration plus seed, exit 0), backend healthy, frontend healthy. It took 23 s with a warm build cache. The Alpine build found the musl native binaries for Next, Tailwind and lightningcss in the lockfile on the first try.
+  - **Hardening, checked inside the running frontend container:**
+    - it runs as `uid=1000(node)` under `docker-init`;
+    - the app files are root-owned, and writing to them or to `/etc` fails with "Read-only file system";
+    - only `/tmp` and `/app/.next/cache` are writable;
+    - `CapEff` is 0 and `NoNewPrivs` is 1.
+  - **Graceful shutdown:** `docker compose stop frontend` finished in about 0.2 s with exit code 143 (SIGTERM handled). The container came back healthy.
+  - **Browser run against the containerised frontend:** the same 16-check Playwright script as Phase 6 passed twice, against the running stack and again against the stack rebuilt from scratch, with only the four console errors the script causes on purpose. The frontend container logged no errors, including no read-only filesystem errors.

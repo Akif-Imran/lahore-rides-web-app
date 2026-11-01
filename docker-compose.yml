@@ -75,5 +75,24 @@ services:
         condition: service_completed_successfully
     # Health check is defined in the image (GET /api/v1/health/live).
 
+  frontend:
+    <<: *hardening
+    image: ride-booking-frontend:local
+    build:
+      context: ./frontend
+      args:
+        # Build-time only: inlined into the browser bundle, so it is the URL the *browser* uses.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001/api/v1}
+    restart: unless-stopped
+    # No runtime environment needed: PORT and HOSTNAME are set in the image.
+    # Next's server may write its cache under .next/cache; everything else stays read-only.
+    tmpfs: [/tmp, /app/.next/cache]
+    ports:
+      - '${FRONTEND_HOST_PORT:-3000}:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Health check is defined in the image (GET /).
+
 volumes:
   pgdata:

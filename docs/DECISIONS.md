@@ -183,6 +183,33 @@ The blueprint fixes the transition table and the error codes. These rules fill i
   - the actor switcher is `RiderSwitcher` (header) plus the driver picker in the console;
   - pure UI logic sits in its own `lib` modules (`booking-state`, `ride-status`, `map-projection`, `persisted-choice`, `format`) so it can be unit-tested without rendering.
 
+## D29. Frontend container: the API URL is a build argument, and the runtime is locked down like the backend
+- **Decision:**
+  - `frontend/Dockerfile` builds Next's `standalone` output on `node:24.19.0-alpine` and runs `node server.js` as `node`. The files are root-owned, as for the backend (D23).
+  - `NEXT_PUBLIC_API_BASE_URL` is a **build argument**. Compose passes it from `.env`, defaulting to `http://localhost:3001/api/v1`.
+  - The Compose service reuses the hardening anchor (read-only root filesystem, `cap_drop: [ALL]`, `no-new-privileges`, `init`). A tmpfs at `/app/.next/cache` is the only writable place besides `/tmp`.
+  - The service has no runtime `environment:`. `PORT`/`HOSTNAME` are set in the image.
+  - It starts after the backend is healthy.
+  - The health check is a `GET /` with Node's `fetch`.
+- **Why:**
+  - Next inlines `NEXT_PUBLIC_*` values into the browser bundle at build time, so a runtime variable would have no effect. The value must be the API URL as the user's *browser* sees it, not the in-network `backend:3001`. Changing it means rebuilding, which `.env.example` and the README call out.
+  - The Dockerfile copies only `next.config.ts`, `tsconfig.json` and `src/`. With `COPY . .`, the test folder would come along. One test imports the backend's seed file, which is outside the build context, so `next build`'s type check would fail.
+  - Alpine keeps the plan's choice. Next's build needs musl-specific native binaries (SWC, Tailwind's oxide, lightningcss), and the lockfile's optional dependencies provided them on the first build.
+
+## D30. Component tests: MSW at the network level, the real query client, and real timers
+- **Decision:** the component tests (blueprint 17–20, plus the driver console) render real components:
+  - **Network:** MSW 3 (`msw/node`) intercepts `fetch`, so the real API client, error parsing and headers are exercised. `onUnhandledFrame: 'error'` fails any test that makes an unexpected request. That option is MSW 3's name for v2's `onUnhandledRequest`.
+  - **Query client:** the app's own `makeQueryClient()` (retry policy, no mutation retries), with only the backoff shortened to 5 ms. One test sets it to 5 s on purpose, to check behaviour *during* the backoff window.
+  - **Timing:** the polling interval (50 ms) and the estimate debounce (0) are shortened through `vi.mock('@/lib/config')`. Timers stay real, so "polling stopped" and "polling paused while hidden" are measured as no requests over several intervals.
+  - **Fixtures:** typed against the generated OpenAPI types, so a contract change breaks the fixtures at compile time.
+- **Why:** the tests check behaviour the user and the backend can observe: requests and headers on the wire, accessible roles and names. They don't check component internals, which keeps them valid through refactors. Fake timers would have to coordinate with TanStack Query's scheduling and MSW's promises; shortened intervals keep the tests simple and fast (about 3.5 s for all 131 tests).
+- **Checked by mutation:** five behaviours were broken on purpose, and the tests must fail each time (see AI_DISCLOSURE, Phase 7):
+  - the double-submit guard;
+  - Idempotency-Key reuse;
+  - stopping polling on a terminal status;
+  - pausing polling in hidden tabs;
+  - "Retry now" being clickable during the backoff.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

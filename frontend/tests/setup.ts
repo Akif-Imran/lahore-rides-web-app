@@ -17,4 +17,7 @@ if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.sho
 // Vitest runs without globals, so Testing Library cannot register its own cleanup.
 afterEach(() => {
   cleanup();
+  // Demo identities live in Web Storage; every test starts from the defaults.
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });

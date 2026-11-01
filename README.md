@@ -17,14 +17,21 @@ cp .env.example .env              # local placeholder values only
 docker compose up --build -d --wait   # or: make up
 ```
 
-This starts three services in order:
+This starts four services in order:
 1. **postgres**, which waits until healthy;
 2. **migrate**, a one-shot job that applies migrations and the idempotent seed, then exits;
-3. **backend**, which waits until healthy.
+3. **backend**, which waits until healthy;
+4. **frontend**, which waits until healthy.
+
+The first build takes a few minutes; later starts take well under a minute.
 
 Then open:
+- **Rider app:** http://localhost:3000. Pick two landmarks, compare Economy and Comfort, and request a ride. "Riding as" in the header switches between the three seeded riders.
+- **Driver console (simulation):** http://localhost:3000/driver. Go online, accept the ride, start it and complete it, and watch the rider tab follow along. Open it in two tabs to race two drivers for the same ride.
 - API: http://localhost:3001/api/v1 (readiness: `/api/v1/health/ready`)
 - API docs (Swagger UI): http://localhost:3001/docs, raw OpenAPI at `/docs-json`
+
+Ports and URLs come from `.env`. `NEXT_PUBLIC_API_BASE_URL` is baked into the frontend at build time, so after changing it run `docker compose up --build`. If you change `FRONTEND_HOST_PORT`, add the new origin to `CORS_ORIGINS`.
 
 Useful commands: `make logs`, `make seed-reset` (deletes all rides and restores the seeded drivers), `make down` (keeps data), `make reset` (also deletes the database volume).
 
@@ -45,6 +52,24 @@ npm run lint && npm run typecheck
 - use the real app against real PostgreSQL;
 - refuse to run unless the database name ends in `_test`;
 - include concurrency races, e.g. 10 drivers accepting the same ride, repeated 20 times.
+
+### Frontend on the host (development)
+Needs the API running, either the compose `backend` or the host backend above.
+```bash
+cd frontend
+cp .env.example .env.local  # NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
+npm install
+npm run dev                 # http://localhost:3000 (stop the compose frontend first: port 3000)
+npm test                    # unit + component tests (Vitest, React Testing Library, MSW); no server needed
+npm run lint && npm run typecheck
+npm run gen:api             # regenerate src/types/api.gen.ts after backend/openapi.json changes
+```
+
+`make test-frontend` runs the same tests. The component tests mock the API with MSW at the network level, so they exercise the real fetch client. They cover:
+- loading, empty and error states;
+- that a retried ride request reuses the same `Idempotency-Key`;
+- that ride polling stops on terminal states and pauses in hidden tabs;
+- the "Reconnecting…" banner and conflict handling on cancel.
 
 ## Repository layout
 ```
