@@ -17,6 +17,18 @@ cp .env.example .env        # local placeholder values only
 docker compose up -d --wait postgres
 ```
 
+### Backend on the host (development)
+```bash
+cd backend
+cp .env.example .env        # points at the compose Postgres on localhost:5432
+npm install
+npm run migrate:up          # apply SQL migrations
+npm run seed                # idempotent demo riders/drivers (npm run seed:reset wipes rides)
+npm run start:dev           # http://localhost:3001/api/v1/health/ready
+npm test                    # unit tests
+npm run lint && npm run typecheck
+```
+
 ## Repository layout
 ```
 backend/            Nest.js API (modular monolith, raw SQL repositories)

@@ -39,8 +39,8 @@
 - **Why:** integration tests then exercise the exact same global pipes, filters, prefix, CORS and security headers as production. The OpenAPI document cannot drift from the running app.
 
 ## D10. Integration tests use a dedicated `<db>_test` database, run in band
-- **Decision:** the compose Postgres init script creates `ridebooking_test`. Jest integration tests run with `maxWorkers: 1` and truncate tables between tests.
-- **Why:** tests run against real Postgres (row locks and partial unique indexes are the thing under test) without touching demo data. Running in band avoids cross-file `TRUNCATE` races.
+- **Decision:** the compose Postgres init script creates `ridebooking_test`. Integration tests run serially (no file parallelism) and truncate tables between tests.
+- **Why:** tests run against real Postgres (row locks and partial unique indexes are the thing under test) without touching demo data. Running serially avoids cross-file `TRUNCATE` races.
 
 ## D11. Throttle limits come from env
 - **Decision:** the global limit and the stricter `POST /rides` limit are env-configured. They are set high in tests, and a dedicated test asserts the `429 RATE_LIMITED` envelope with a low limit.
@@ -49,6 +49,16 @@
 ## D12. ETag polling via Express defaults
 - **Decision:** `GET /rides/{id}` relies on Express's weak ETag and sets `Cache-Control: no-cache`, so the browser revalidates and gets `304` when nothing changed. CORS exposes `ETag`, `X-Request-Id`, `Idempotent-Replayed` and `Retry-After`.
 - **Why:** cheap polling with no custom caching code.
+
+## D13. Backend uses Nest 12's default toolchain: Vitest, oxlint, native ESM
+- **Blueprint:** Jest + Supertest for backend tests, ESLint + Prettier for linting.
+- **Decision:** keep what `@nestjs/cli@12 new` generates: Vitest + Supertest, oxlint (type-aware) + Prettier, and `"type": "module"` with `nodenext` resolution. TypeScript stays on the version the CLI pins (6.0).
+- **Why:** the blueprint picked Jest and ESLint because they were Nest's defaults when it was written; the intent was "latest Nest". Fighting the scaffold (Jest under ESM needs experimental flags) would cost time and add fragility. Vitest also matches the frontend, so the whole repo uses one test runner and one assertion API. Verified before adopting: Vitest emits decorator metadata, so Nest DI works in tests. oxlint enforces `no-explicit-any`, `eqeqeq`, `no-floating-promises` and `no-misused-promises` as errors.
+- **Consequences:** relative imports carry a `.js` extension; `import.meta.dirname` replaces `__dirname`.
+
+## D14. Migrations run through node-pg-migrate's programmatic runner
+- **Decision:** `src/database/migrations.ts` wraps node-pg-migrate's `runner()` (SQL files with `-- Up Migration` / `-- Down Migration` sections). The same function serves `npm run migrate:up|down` (via `tsx` on the host), `node dist/scripts/migrate.js` in the Docker `migrate` service, and the integration-test setup.
+- **Why:** one code path for every environment. It reuses the validated `DATABASE_URL`, and it takes node-pg-migrate's advisory lock, so two runners can never apply the same migration concurrently.
 
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.

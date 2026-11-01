@@ -17,3 +17,21 @@ One entry per phase: what was generated, and how it was verified.
   - `docker compose up -d --wait postgres` reports healthy (PostgreSQL 16.15), and `pg_database` lists both `ridebooking` and `ridebooking_test`.
   - `git check-ignore` confirms `.env`, `docs/assessment.pdf`, `.DS_Store` and `.claude/settings.local.json` are ignored, and `git status` shows only intended files.
   - `make help` lists every target.
+
+### Phase 1: Backend scaffold, config, database layer, migrations, seed
+- **Generated:**
+  - the Nest 12 scaffold (CLI), with sample code removed;
+  - the zod env schema and typed config module;
+  - the pg pool provider, `Queryable`, `TransactionManager` and migration runner;
+  - the initial SQL migration;
+  - seed data, seed repository, seeder and CLIs;
+  - the health endpoints, `configureApp` and `main.ts`;
+  - unit tests for config, the transaction manager, seed data and `describeError`.
+- **Verified:**
+  - Checked that the scaffold's Vitest/oxlint toolchain works before adopting it: DI works in tests, and an oxlint probe file confirmed `any`, `==` and `var` are rejected.
+  - `typecheck`, `lint`, `format:check` and `test` all pass (28 tests).
+  - Against the real Postgres: `migrate:up`, then `migrate:down` (0 app tables left), then `migrate:up`. A repeated `up` is a no-op, and all three partial unique indexes exist.
+  - `seed` run twice gives identical counts. The default seed leaves a manually changed driver availability untouched, and `seed:reset` restores it.
+  - A manual constraint violation (lat without lng) is rejected by `chk_driver_location_pair`.
+  - On the built app: `/health/live` and `/health/ready` return 200. Stopping Postgres turns readiness into 503 while liveness stays 200, and readiness recovers when Postgres restarts. SIGTERM exits cleanly, and missing or invalid env vars abort startup with exit 1 and a list naming each variable.
+  - **Bug found and fixed during verification:** the readiness warning logged an empty message, because `localhost` resolves to both `::1` and `127.0.0.1` and the refusal arrives as an `AggregateError` with no message. Added `describeError()` with tests, and now the log reads `connect ECONNREFUSED ::1:5432; connect ECONNREFUSED 127.0.0.1:5432`.
