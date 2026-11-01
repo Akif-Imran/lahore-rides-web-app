@@ -1,0 +1,35 @@
+# Secrets / local env: only the *.env.example templates are committed
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Test and coverage artefacts
+coverage/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json
+
+# Original assessment brief: the employer's document, not part of the submission
+docs/assessment.pdf
