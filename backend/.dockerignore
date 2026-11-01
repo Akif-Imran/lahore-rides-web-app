@@ -1,0 +1,15 @@
+# Keep the build context small and free of secrets and local artefacts.
+node_modules
+dist
+coverage
+test
+*.tsbuildinfo
+.env
+.env.*
+npm-debug.log*
+.DS_Store
+openapi.json
+vitest.config*.ts
+.oxlintrc.json
+Dockerfile
+.dockerignore

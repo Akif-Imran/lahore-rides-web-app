@@ -108,6 +108,17 @@ The blueprint fixes the transition table and the error codes. These rules fill i
   - **Forced interleavings:** the test holds the ride's row lock, queues the two requests behind it in a chosen order (checked through `pg_stat_activity`), then releases it. One test runs accept-then-cancel and the other cancel-then-accept, each with exact expected results.
   - **Start vs cancel:** the race where "never both" genuinely holds, because cancelling is illegal once a trip has started.
 
+## D23. Containers get an explicit environment and least privilege
+- **Blueprint:** compose passes credentials via `env_file`.
+- **Decision:** each service declares exactly the variables it needs under `environment:`, interpolated from the root `.env`. For example, the backend's `DATABASE_URL` is assembled from `POSTGRES_*`. App containers also run:
+  - as the non-root `node` user;
+  - with a read-only root filesystem (`/tmp` is a tmpfs);
+  - with `cap_drop: [ALL]` and `no-new-privileges`;
+  - with `init: true`, so SIGTERM is forwarded and child processes are reaped.
+  The app's files are owned by root, so even the app user cannot modify its own code.
+- **Why:** an `env_file` would hand every variable (e.g. the frontend's settings) to every container. Explicit mapping documents each service's real configuration. The hardening costs nothing, because the API never writes to disk.
+- **Image build:** `backend` builds `ride-booking-backend:local` once. `migrate` reuses it with `pull_policy: never`, which avoids a duplicate build and export of the same tag.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

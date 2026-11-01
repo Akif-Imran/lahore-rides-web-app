@@ -1,5 +1,21 @@
 name: ride-booking
 
+# The one-shot `migrate` job and the long-running `backend` run the same image with the same
+# database settings. Values come from the root .env (see .env.example).
+x-backend-db-env: &backend-db-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+# Least privilege for app containers: no Linux capabilities, no privilege escalation, and a
+# read-only root filesystem (the app never writes to disk; /tmp is an in-memory tmpfs).
+x-hardening: &hardening
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,6 +36,44 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+
+  # Pre-deploy step, as in production: apply migrations, then the idempotent seed, then exit.
+  # The API only starts once this has completed successfully.
+  migrate:
+    <<: *hardening
+    # Built by the `backend` service below; never pulled from a registry.
+    image: ride-booking-backend:local
+    pull_policy: never
+    command: ['sh', '-c', 'node dist/scripts/migrate.js up && node dist/seed/seed.js']
+    environment:
+      <<: *backend-db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  backend:
+    <<: *hardening
+    image: ride-booking-backend:local
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-db-env
+      PORT: 3001
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DRIVER_LOCATION_TTL_SECONDS: ${DRIVER_LOCATION_TTL_SECONDS:-120}
+      RIDE_REQUEST_TTL_SECONDS: ${RIDE_REQUEST_TTL_SECONDS:-300}
+      RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-120}
+      RATE_LIMIT_CREATE_RIDE_LIMIT: ${RATE_LIMIT_CREATE_RIDE_LIMIT:-10}
+    ports:
+      - '${BACKEND_HOST_PORT:-3001}:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Health check is defined in the image (GET /api/v1/health/live).
 
 volumes:
   pgdata:

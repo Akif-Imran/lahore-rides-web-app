@@ -99,3 +99,19 @@ One entry per phase: what was generated, and how it was verified.
     - typecheck caught helper calls with a missing `pool` argument;
     - one test wrongly assumed which CHECK constraint Postgres would report when a value violates two.
   - Integration coverage is 93% of lines in `src`; the gaps are covered by unit tests or are scripts.
+
+### Phase 5: Backend Docker and Compose
+- **Generated:** the multi-stage `backend/Dockerfile` and `.dockerignore`; the `migrate` one-shot and `backend` services; container hardening (D23).
+- **Verified:**
+  - **From scratch:** `docker compose down -v`, image deleted, then `docker compose up --build -d --wait`. The order held: postgres healthy, then migrate applied the migration and seeded and exited 0, then the backend became healthy. The test database was created. About 17 s with a warm build cache; a cold build takes about a minute.
+  - **49-check smoke test against the container:** all passed.
+  - **Restart:** a second `up` re-ran migrate as a no-op and kept the data. `make seed` and `make seed-reset` work inside the read-only container.
+  - **Hardening, checked inside the running container:**
+    - the process runs as `uid=1000(node)` under `docker-init`;
+    - writes to app code are denied, the root filesystem is read-only, and only `/tmp` is writable;
+    - `CapEff` is 0 and `NoNewPrivs` is 1;
+    - logs are JSON.
+  - **Graceful shutdown:** `docker compose stop backend` returned in under 1 s with exit code 143 (SIGTERM handled, not a forced kill).
+  - **Build:** the first compose file built and exported the same image twice (once per service); fixed with a single build plus `pull_policy: never`. Rebuilding after deleting the image confirmed compose still builds it before migrate starts.
+  - Unit and integration suites (453 + 107) still pass against the re-created test database.
+  - **Not pursued:** an attempt to slim the image with `npm ci --omit=peer` grew `node_modules` instead (135 MB to 253 MB). It was reverted, and image size was left as is at the user's request.

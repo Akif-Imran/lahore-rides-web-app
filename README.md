@@ -13,9 +13,20 @@ A simplified ride-hailing app. A rider picks pickup and destination, chooses Eco
 
 ## Quick start
 ```bash
-cp .env.example .env        # local placeholder values only
-docker compose up -d --wait postgres
+cp .env.example .env              # local placeholder values only
+docker compose up --build -d --wait   # or: make up
 ```
+
+This starts three services in order:
+1. **postgres**, which waits until healthy;
+2. **migrate**, a one-shot job that applies migrations and the idempotent seed, then exits;
+3. **backend**, which waits until healthy.
+
+Then open:
+- API: http://localhost:3001/api/v1 (readiness: `/api/v1/health/ready`)
+- API docs (Swagger UI): http://localhost:3001/docs, raw OpenAPI at `/docs-json`
+
+Useful commands: `make logs`, `make seed-reset` (deletes all rides and restores the seeded drivers), `make down` (keeps data), `make reset` (also deletes the database volume).
 
 ### Backend on the host (development)
 ```bash
