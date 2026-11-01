@@ -60,6 +60,15 @@
 - **Decision:** `src/database/migrations.ts` wraps node-pg-migrate's `runner()` (SQL files with `-- Up Migration` / `-- Down Migration` sections). The same function serves `npm run migrate:up|down` (via `tsx` on the host), `node dist/scripts/migrate.js` in the Docker `migrate` service, and the integration-test setup.
 - **Why:** one code path for every environment. It reuses the validated `DATABASE_URL`, and it takes node-pg-migrate's advisory lock, so two runners can never apply the same migration concurrently.
 
+## D15. Lifecycle rules: error precedence, idempotency and visibility details
+The blueprint fixes the transition table and the error codes. These rules fill in what it leaves open. All are pure functions in `rides/ride-state-machine.ts`, `rides/ride-access.ts` and `matching/eligibility.ts`, with table-driven tests.
+- **State before permission.** An impossible transition is `409 INVALID_STATE_TRANSITION` for everyone, for example completing a `REQUESTED` ride. A legal transition attempted by the wrong party is `403 FORBIDDEN`, for example a driver who is not assigned starting the trip. This is the split blueprint test 11 expects.
+- **Permanent before transient.** On accept, a vehicle-category mismatch (`403 DRIVER_NOT_ELIGIBLE`) is reported before availability or a stale location (`409 DRIVER_UNAVAILABLE`). Retrying can never fix the former.
+- **`start` is idempotent for the assigned driver**, like accept, cancel and complete (blueprint 3.3D lists only those three). A retried "Start trip" returns 200 with the current ride.
+- **Who may view a ride:** its rider, its assigned driver (also after a cancel), and any driver who could accept it right now (`REQUESTED` and category-compatible). The offer radius is not applied to direct reads, only to the offers list.
+- **Non-owner riders get 404, not 403**, so other riders cannot probe which ride ids exist (blueprint 4.3).
+- **Error code for a too-short trip:** `TRIP_TOO_SHORT`, inside a `VALIDATION_ERROR` field error. The pickup and destination are not necessarily identical, only closer than 200 m.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

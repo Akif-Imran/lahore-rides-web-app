@@ -13,6 +13,10 @@ describe('describeError', () => {
     expect(describeError(withCode('', 'ECONNREFUSED'))).toBe('ECONNREFUSED');
   });
 
+  it('falls back to the error name when there is neither message nor code', () => {
+    expect(describeError(new TypeError(''))).toBe('TypeError');
+  });
+
   it('describes an empty-message AggregateError by its de-duplicated inner errors', () => {
     const error = new AggregateError([
       withCode('connect ECONNREFUSED ::1:5432', 'ECONNREFUSED'),

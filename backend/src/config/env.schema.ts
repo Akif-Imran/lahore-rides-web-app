@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BoundingBox } from '../common/utils/geo.js';
 
 /**
  * Environment contract for the backend. Parsed once at startup; any problem aborts the boot
@@ -7,13 +8,6 @@ import { z } from 'zod';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
-
-export interface BoundingBox {
-  minLat: number;
-  minLng: number;
-  maxLat: number;
-  maxLng: number;
-}
 
 /** Lahore service area (lat 31.35–31.70, lng 74.10–74.55). */
 export const DEFAULT_SERVICE_AREA: BoundingBox = {
