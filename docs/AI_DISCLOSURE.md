@@ -54,3 +54,29 @@ One entry per phase: what was generated, and how it was verified.
     The originals were then restored, and all tests pass again.
   - Fare expectations were worked out by hand from the blueprint formula (e.g. 10 km Economy = 150 + 400 + 125 = Rs 675) rather than copied from the implementation's output. Distances are checked against independent geometry: 1° of latitude ≈ 111.195 km, and longitude scales with cos(latitude).
   - 100% line, branch and function coverage on every domain file (JSON coverage summary). `typecheck`, `lint` and `format:check` pass.
+
+### Phase 3: Backend API
+- **Generated:**
+  - repositories (raw SQL with a Haversine SQL fragment that mirrors the TypeScript one);
+  - the error mapper and global filter, validation pipe, request ids, structured logging, rate limiting and the actor guard;
+  - the idempotency, matching, rides, drivers and fare-estimate services;
+  - controllers, DTOs and Swagger, the expiry sweeper, the OpenAPI export;
+  - unit tests for the new pure modules (95 new, 453 in total).
+- **Verified:**
+  - **Seed coverage analysis (before writing the matching code).** A script measured the 5 km coverage of the 12 frontend landmarks. The blueprint's seed left Lahore Fort, Badshahi Mosque, the Railway Station and Mall Road without an Economy driver, so the positions were changed (DECISIONS D17).
+  - **First boot found a DI bug.** nestjs-pino only creates providers for `@InjectPinoLogger` contexts registered *before* `LoggerModule.forRootAsync()` runs, and ESM import order made that call too early. Fixed by building the logger module lazily in `AppModule.forRoot()`.
+  - **Self-review fixes:**
+    - in `start`/`complete`, a null actor would have returned ride details instead of 404;
+    - the `Location` header dropped the `/api/v1` prefix.
+  - **49-check curl smoke test** against the real database, all passing:
+    - the full lifecycle and the idempotent replays, with a byte-identical replayed body;
+    - 422 for a reused key and 409 for an active ride;
+    - 304 via ETag;
+    - every 400/401/403/404/409 path;
+    - malformed JSON and unknown routes return the envelope with a request id;
+    - `X-Request-Id` propagation, CORS preflight, helmet headers, and `/docs`.
+  - **Rate limit with the real default.** The 11th ride creation in a minute got `429` with `Retry-After: 60`; another rider was unaffected. (The first smoke run tripped the limit across two quick runs, which confirmed it works.)
+  - **Expiry sweeper on the live server.** A ride backdated by 6 minutes became `EXPIRED` on the next tick (~9 s), and the rider could book again.
+  - **OpenAPI export.** Runs with no database and is byte-identical across two runs, which the CI drift check needs. Nullable references use the OpenAPI 3.0 `allOf` form.
+  - Structured logs carry the request id on business events (`ride.assigned`, …) and `errorCode` on 4xx lines.
+  - `typecheck`, `lint` and `format:check` pass. The new pure modules have 91–100% line coverage; the remaining wiring is covered by Phase 4's integration tests.

@@ -1,0 +1,1721 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "HealthController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Liveness: the process is up. Never touches dependencies.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICE_UNAVAILABLE: transient failure, safe to retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness: the instance can serve traffic (database reachable).",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/rides": {
+      "post": {
+        "description": "Quotes the fare, estimates the pickup ETA and creates a REQUESTED ride. Safe to retry with the same Idempotency-Key: the original response is replayed and no second ride is created.",
+        "operationId": "RidesController_create",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID generated once per ride request; reuse it when retrying the same request.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRideDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay of an earlier request with the same Idempotency-Key",
+            "headers": {
+              "Idempotent-Replayed": {
+                "schema": {
+                  "type": "string",
+                  "example": "true"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Ride requested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ACTIVE_RIDE_EXISTS: the rider already has an active ride (details.activeRideId)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "IDEMPOTENCY_KEY_REUSED: same key, different request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED: retry after the Retry-After header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "rider": []
+          }
+        ],
+        "summary": "Request a ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{id}": {
+      "get": {
+        "description": "Visible to its rider, its assigned driver, and drivers who could accept it now. Supports If-None-Match (ETag) so status polling is cheap.",
+        "operationId": "RidesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified since the ETag in If-None-Match"
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "rider": []
+          },
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Get a ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{id}/accept": {
+      "post": {
+        "description": "Exactly one driver wins. Repeating the call as the winner returns 200 unchanged.",
+        "operationId": "RidesController_accept",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ride is ASSIGNED to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "DRIVER_NOT_ELIGIBLE: vehicle category cannot serve this ride\n\nFORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RIDE_ALREADY_ASSIGNED | DRIVER_UNAVAILABLE | INVALID_STATE_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Accept a ride (driver)",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{id}/start": {
+      "post": {
+        "operationId": "RidesController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ride is IN_PROGRESS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVALID_STATE_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Start the trip (assigned driver)",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{id}/cancel": {
+      "post": {
+        "description": "Rider: while REQUESTED or ASSIGNED. Assigned driver: while ASSIGNED. Frees the driver. Cancelling an already cancelled ride returns 200.",
+        "operationId": "RidesController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRideDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ride is CANCELLED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVALID_STATE_TRANSITION: trip already started or finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "rider": []
+          },
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Cancel a ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{id}/complete": {
+      "post": {
+        "description": "Requires IN_PROGRESS. Sets the final fare and frees the driver.",
+        "operationId": "RidesController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ride is COMPLETED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVALID_STATE_TRANSITION: must be IN_PROGRESS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Complete the trip (assigned driver)",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/riders/me/active-ride": {
+      "get": {
+        "description": "Lets the UI restore an in-flight ride after a refresh. `ride` is null when none.",
+        "operationId": "RidersController_activeRide",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveRideResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "rider": []
+          }
+        ],
+        "summary": "The caller's active ride, if any",
+        "tags": [
+          "riders"
+        ]
+      }
+    },
+    "/api/v1/drivers/{id}": {
+      "get": {
+        "operationId": "DriversController_getProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "The driver's profile, availability and active ride",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/{id}/offers": {
+      "get": {
+        "description": "REQUESTED rides the vehicle category can serve, with pickups inside MAX_OFFER_RADIUS_KM, nearest first. Empty unless the driver is AVAILABLE with a fresh location.",
+        "operationId": "DriversController_listOffers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffersResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Open rides this driver can accept",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/{id}/availability": {
+      "patch": {
+        "description": "Rejected with 409 while the driver is BUSY on a trip.",
+        "operationId": "DriversController_setAvailability",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAvailabilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: the resource does not exist or is not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: the driver is on an active trip",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "driver": []
+          }
+        ],
+        "summary": "Go AVAILABLE or OFFLINE (optionally reporting a location)",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/fare-estimates": {
+      "post": {
+        "description": "Creates nothing. Powers the booking screen before the rider requests a ride.",
+        "operationId": "FareEstimatesController_estimate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FareEstimateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FareEstimateResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: invalid input (see details.fields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or unknown X-Rider-Id / X-Driver-Id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller may not perform this action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "rider": []
+          }
+        ],
+        "summary": "Estimate fares and pickup ETA for every category",
+        "tags": [
+          "fares"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Ride Booking API",
+    "description": "Simplified ride-booking API for Lahore.\n\n**Identity (demo only).** Callers identify themselves with `X-Rider-Id` or `X-Driver-Id`\n(UUIDs of seeded users). Production would use JWT/OIDC; the guard is isolated so that swap is\na one-file change.\n\n**Idempotency.** `POST /rides` requires an `Idempotency-Key` (UUID) generated once per ride\nrequest and reused on retries. A replay returns the original response with\n`Idempotent-Replayed: true`; the same key with a different body returns 422.\n\n**Errors.** Every non-2xx response uses one envelope:\n`{ \"error\": { \"code\", \"message\", \"details\"?, \"requestId\" } }`. Clients branch on `code`.\nEvery response carries `X-Request-Id`.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "rides",
+      "description": "Ride requests and lifecycle"
+    },
+    {
+      "name": "fares",
+      "description": "Fare and pickup ETA estimates"
+    },
+    {
+      "name": "riders",
+      "description": "Rider-scoped queries"
+    },
+    {
+      "name": "drivers",
+      "description": "Driver console: availability and offers"
+    },
+    {
+      "name": "health",
+      "description": "Liveness and readiness probes"
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "rider": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Rider-Id",
+        "description": "Seeded rider UUID"
+      },
+      "driver": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Driver-Id",
+        "description": "Seeded driver UUID"
+      }
+    },
+    "schemas": {
+      "HealthChecksDto": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "enum": [
+              "up"
+            ]
+          }
+        },
+        "required": [
+          "database"
+        ]
+      },
+      "HealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecksDto"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "ErrorBodyDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_ERROR",
+              "UNAUTHENTICATED",
+              "FORBIDDEN",
+              "DRIVER_NOT_ELIGIBLE",
+              "NOT_FOUND",
+              "RIDE_ALREADY_ASSIGNED",
+              "INVALID_STATE_TRANSITION",
+              "ACTIVE_RIDE_EXISTS",
+              "DRIVER_UNAVAILABLE",
+              "CONFLICT",
+              "IDEMPOTENCY_KEY_REUSED",
+              "RATE_LIMITED",
+              "INTERNAL_ERROR",
+              "SERVICE_UNAVAILABLE"
+            ],
+            "example": "INVALID_STATE_TRANSITION"
+          },
+          "message": {
+            "type": "string",
+            "example": "Ride cannot move from CANCELLED to COMPLETED"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Machine-readable context. VALIDATION_ERROR: `{ fields: [{ field, message, code? }] }`; INVALID_STATE_TRANSITION: `{ currentStatus, attempted }`; ACTIVE_RIDE_EXISTS: `{ activeRideId }`.",
+            "example": {
+              "currentStatus": "CANCELLED",
+              "attempted": "COMPLETED"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "example": "6f1c2a7e-3b0d-4c8e-9a51-2f4d7c9e1b3a"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBodyDto"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "LocationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Liberty Market",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "lat": {
+            "type": "number",
+            "example": 31.5106,
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": "number",
+            "example": 74.344,
+            "minimum": -180,
+            "maximum": 180
+          }
+        },
+        "required": [
+          "name",
+          "lat",
+          "lng"
+        ]
+      },
+      "CreateRideDto": {
+        "type": "object",
+        "properties": {
+          "pickup": {
+            "$ref": "#/components/schemas/LocationDto"
+          },
+          "destination": {
+            "example": {
+              "name": "Lahore Fort",
+              "lat": 31.588,
+              "lng": 74.315
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationDto"
+              }
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "COMFORT"
+            ],
+            "example": "ECONOMY"
+          }
+        },
+        "required": [
+          "pickup",
+          "destination",
+          "category"
+        ]
+      },
+      "NamedLocationDto": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "example": 31.5106
+          },
+          "lng": {
+            "type": "number",
+            "example": 74.344
+          },
+          "name": {
+            "type": "string",
+            "example": "Liberty Market"
+          }
+        },
+        "required": [
+          "lat",
+          "lng",
+          "name"
+        ]
+      },
+      "FareBreakdownDto": {
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "number",
+            "example": 150,
+            "description": "PKR"
+          },
+          "distance": {
+            "type": "number",
+            "example": 475,
+            "description": "PKR"
+          },
+          "time": {
+            "type": "number",
+            "example": 148,
+            "description": "PKR"
+          },
+          "surge": {
+            "type": "number",
+            "example": 1
+          },
+          "minimumFareApplied": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "base",
+          "distance",
+          "time",
+          "surge",
+          "minimumFareApplied"
+        ]
+      },
+      "RideFareDto": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "PKR"
+          },
+          "estimatedTotal": {
+            "type": "number",
+            "example": 773,
+            "description": "Whole PKR"
+          },
+          "finalTotal": {
+            "type": "number",
+            "nullable": true,
+            "example": null,
+            "description": "Set on completion"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/FareBreakdownDto"
+          }
+        },
+        "required": [
+          "currency",
+          "estimatedTotal",
+          "finalTotal",
+          "breakdown"
+        ]
+      },
+      "CoordinatesDto": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "example": 31.5106
+          },
+          "lng": {
+            "type": "number",
+            "example": 74.344
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ]
+      },
+      "RideDriverDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Usman Tariq"
+          },
+          "vehicle": {
+            "type": "string",
+            "example": "Suzuki Alto"
+          },
+          "plate": {
+            "type": "string",
+            "example": "LEA-1001"
+          },
+          "vehicleCategory": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "COMFORT"
+            ]
+          },
+          "location": {
+            "nullable": true,
+            "description": "Live position while ASSIGNED or IN_PROGRESS; null otherwise",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoordinatesDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vehicle",
+          "plate",
+          "vehicleCategory",
+          "location"
+        ]
+      },
+      "RideResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "COMPLETED",
+              "CANCELLED",
+              "EXPIRED"
+            ],
+            "example": "REQUESTED"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "COMFORT"
+            ],
+            "example": "ECONOMY"
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/NamedLocationDto"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/NamedLocationDto"
+          },
+          "distanceMeters": {
+            "type": "number",
+            "example": 11873,
+            "description": "Estimated road distance"
+          },
+          "durationSeconds": {
+            "type": "number",
+            "example": 1781,
+            "description": "Estimated trip duration"
+          },
+          "etaMinutes": {
+            "type": "number",
+            "nullable": true,
+            "example": 4,
+            "description": "Pickup ETA at request time; null if no driver was nearby"
+          },
+          "fare": {
+            "$ref": "#/components/schemas/RideFareDto"
+          },
+          "driver": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RideDriverDto"
+              }
+            ]
+          },
+          "cancelledBy": {
+            "type": "string",
+            "enum": [
+              "RIDER",
+              "DRIVER",
+              "SYSTEM"
+            ],
+            "nullable": true,
+            "example": null
+          },
+          "cancelReason": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assignedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "version": {
+            "type": "number",
+            "example": 1,
+            "description": "Incremented on every state change"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "category",
+          "pickup",
+          "destination",
+          "distanceMeters",
+          "durationSeconds",
+          "etaMinutes",
+          "fare",
+          "driver",
+          "cancelledBy",
+          "cancelReason",
+          "createdAt",
+          "updatedAt",
+          "assignedAt",
+          "startedAt",
+          "completedAt",
+          "cancelledAt",
+          "version"
+        ]
+      },
+      "CancelRideDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "Plans changed"
+          }
+        }
+      },
+      "ActiveRideResponseDto": {
+        "type": "object",
+        "properties": {
+          "ride": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RideResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ride"
+        ]
+      },
+      "DriverResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Usman Tariq"
+          },
+          "vehicle": {
+            "type": "string",
+            "example": "Suzuki Alto"
+          },
+          "plate": {
+            "type": "string",
+            "example": "LEA-1001"
+          },
+          "vehicleCategory": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "COMFORT"
+            ]
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "OFFLINE",
+              "AVAILABLE",
+              "BUSY"
+            ]
+          },
+          "location": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoordinatesDto"
+              }
+            ]
+          },
+          "locationUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "activeRide": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RideResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vehicle",
+          "plate",
+          "vehicleCategory",
+          "availability",
+          "location",
+          "locationUpdatedAt",
+          "activeRide"
+        ]
+      },
+      "OfferDto": {
+        "type": "object",
+        "properties": {
+          "ride": {
+            "$ref": "#/components/schemas/RideResponseDto"
+          },
+          "distanceToPickupMeters": {
+            "type": "number",
+            "example": 1800,
+            "description": "Straight-line distance to the pickup"
+          },
+          "pickupEtaMinutes": {
+            "type": "number",
+            "example": 7
+          }
+        },
+        "required": [
+          "ride",
+          "distanceToPickupMeters",
+          "pickupEtaMinutes"
+        ]
+      },
+      "OffersResponseDto": {
+        "type": "object",
+        "properties": {
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferDto"
+            }
+          }
+        },
+        "required": [
+          "offers"
+        ]
+      },
+      "UpdateAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "OFFLINE"
+            ],
+            "description": "BUSY is controlled by the ride lifecycle and cannot be set directly"
+          },
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "example": 31.52,
+            "description": "Send with lng"
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "example": 74.36,
+            "description": "Send with lat"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "FareEstimateRequestDto": {
+        "type": "object",
+        "properties": {
+          "pickup": {
+            "$ref": "#/components/schemas/LocationDto"
+          },
+          "destination": {
+            "example": {
+              "name": "Lahore Fort",
+              "lat": 31.588,
+              "lng": 74.315
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pickup",
+          "destination"
+        ]
+      },
+      "CategoryEstimateDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "COMFORT"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "example": "PKR"
+          },
+          "total": {
+            "type": "number",
+            "example": 773,
+            "description": "Whole PKR"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/FareBreakdownDto"
+          },
+          "etaMinutes": {
+            "type": "number",
+            "nullable": true,
+            "example": 4,
+            "description": "Pickup ETA of the nearest eligible driver; null when none is nearby"
+          }
+        },
+        "required": [
+          "category",
+          "currency",
+          "total",
+          "breakdown",
+          "etaMinutes"
+        ]
+      },
+      "FareEstimateResponseDto": {
+        "type": "object",
+        "properties": {
+          "distanceMeters": {
+            "type": "number",
+            "example": 11873
+          },
+          "durationSeconds": {
+            "type": "number",
+            "example": 1781
+          },
+          "estimates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryEstimateDto"
+            }
+          }
+        },
+        "required": [
+          "distanceMeters",
+          "durationSeconds",
+          "estimates"
+        ]
+      }
+    }
+  }
+}

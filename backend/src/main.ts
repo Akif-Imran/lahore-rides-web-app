@@ -1,5 +1,5 @@
-import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { API_PREFIX, configureApp } from './app.setup.js';
 import { ConfigValidationError, loadConfig, type AppConfig } from './config/env.schema.js';
@@ -21,12 +21,18 @@ async function bootstrap(): Promise<void> {
   const config = loadConfigOrExit();
   if (!config) return;
 
-  const app = configureApp(await NestFactory.create(AppModule.forRoot(config)));
+  // Buffer framework logs until the pino logger is attached, so every line is structured.
+  const app = configureApp(
+    await NestFactory.create(AppModule.forRoot(config), { bufferLogs: true }),
+    config,
+  );
   // SIGTERM/SIGINT -> app.close() -> onApplicationShutdown hooks (drains the pg pool).
   app.enableShutdownHooks();
 
   await app.listen(config.port);
-  new Logger('Bootstrap').log(`API listening on :${config.port}/${API_PREFIX}`);
+  app
+    .get(Logger)
+    .log(`API listening on :${config.port}/${API_PREFIX} (docs at /docs)`, 'Bootstrap');
 }
 
 await bootstrap();

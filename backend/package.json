@@ -25,7 +25,8 @@
     "migrate:down": "tsx --env-file-if-exists=.env src/scripts/migrate.ts down",
     "migrate:create": "node-pg-migrate create --migration-file-language sql --migrations-dir migrations",
     "seed": "tsx --env-file-if-exists=.env src/seed/seed.ts",
-    "seed:reset": "tsx --env-file-if-exists=.env src/seed/seed.ts --reset"
+    "seed:reset": "tsx --env-file-if-exists=.env src/seed/seed.ts --reset",
+    "openapi:export": "nest build && node dist/scripts/export-openapi.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
