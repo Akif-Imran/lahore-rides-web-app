@@ -71,6 +71,26 @@ npm run gen:api             # regenerate src/types/api.gen.ts after backend/open
 - that ride polling stops on terminal states and pauses in hidden tabs;
 - the "Reconnecting…" banner and conflict handling on cancel.
 
+### End-to-end tests (Playwright)
+These run real browsers against the running Docker stack, the same images a reviewer starts.
+```bash
+make up     # the full stack must be running
+make e2e    # installs Chromium if needed, resets the demo data, runs the suite (~25 s)
+# without make: cd frontend && npx playwright install chromium && npm run test:e2e
+```
+
+| Test | What it proves |
+|---|---|
+| 21, main flow | A rider books Liberty Market → Lahore Fort. A driver in a second browser goes online, accepts, starts and completes. The rider page follows every status to a receipt equal to the quoted fare. |
+| 22, cancel flow | The rider cancels after confirming, and the ride disappears from the driver console. |
+| 23, error and retry | The first `POST /rides` fails with a 500. Retry sends the same `Idempotency-Key` and exactly one ride exists. |
+| 23b, lost response | The API commits the ride but the browser never receives the answer. Retry gets a `200` replay (`Idempotent-Replayed: true`) of the same ride, not a second booking. |
+| Driver race | Two driver browsers press Accept at the same moment. One gets the ride; the other sees "Another driver took this ride." |
+
+- **On failure:** the HTML report, with traces and screenshots, is in `frontend/playwright-report`.
+- **Another deployment:** set `E2E_BASE_URL` and `E2E_API_URL`.
+- **Resetting data:** the suite resets with `docker compose exec -T backend node dist/seed/seed.js --reset`. Set `E2E_RESET_CMD` to replace that command, or to an empty string to skip it. The tests clean up after themselves, so they also pass without a reset, in any order.
+
 ## Repository layout
 ```
 backend/            Nest.js API (modular monolith, raw SQL repositories)

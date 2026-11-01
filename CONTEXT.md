@@ -1,24 +1,35 @@
 # Project context: Lahore ride-booking assessment
 
-Continuity file for future sessions and context compactions. Read this first, then `CLAUDE.md`, `docs/blueprint.md` (Step 5 is the build spec) and `docs/DECISIONS.md` (D1–D30).
+Continuity file for future sessions and context compactions. Read this first, then `CLAUDE.md`, `docs/blueprint.md` (Step 5 is the build spec) and `docs/DECISIONS.md` (D1–D31).
 
-## Current state (2026-11-01)
-- **Done:** Phases 0–7. Each phase is one commit, findable with `git log --oneline` (messages end in `(phase N)`). The whole stack (postgres, migrate, backend, frontend) runs with `docker compose up --build -d --wait`.
-- **Next:** Phase 8, Playwright E2E against the Compose stack (blueprint tests 21–23):
-  - main flow;
-  - cancel flow;
-  - error and retry, with exactly one ride created.
-  `globalSetup` resets the data with `docker compose exec -T backend node dist/seed/seed.js --reset`.
-- **Remaining after that:** Phase 9, covering CI, the README/ARCHITECTURE docs and a hardening sweep. The sweep includes the backend's `npm audit` advisories from node-pg-migrate's `glob`, and the frontend's 16 dev-only ESLint-tooling advisories.
-- **Notes for Phase 8:**
-  - Chromium for Playwright is already installed locally.
-  - Don't screenshot before hydration finishes (wait for `networkidle`); otherwise Playwright's caret hiding causes a false hydration warning.
-  - Useful selectors already in the UI:
-    - `getByRole('combobox', { name: 'Pickup' | 'Destination' })` plus the options;
-    - `getByTestId('ride-status' | 'fare-amount' | 'pickup-eta' | 'receipt-total' | 'offer' | 'driver-active-trip' | 'driver-availability')`;
-    - buttons `Request Economy · Rs …`, `Accept ride`, `Start trip`, `Complete trip`, `Cancel ride`.
-  - A throwaway 16-check Playwright script from Phases 6–7 lives in the session scratchpad and covers the same flows; reuse its steps.
-  - The ride-create rate limit is 10 per minute per rider. E2E runs that book many rides should vary the rider or reset between runs.
+## Current state (2026-11-02)
+- **Done:** Phases 0–8. Each phase is one commit, findable with `git log --oneline` (messages end in `(phase N)`).
+  - The whole stack runs with `docker compose up --build -d --wait`.
+  - `make e2e` runs 5 Playwright tests against it in about 25 s.
+- **Next:** Phase 9, the last phase:
+  - `.github/workflows/ci.yml` with three jobs:
+    - **backend:** a Postgres 16 service, lint, typecheck, unit tests, then integration tests on the test database;
+    - **frontend:** lint, typecheck, Vitest, the `gen:api` drift check (`git diff --exit-code`), `next build`;
+    - **e2e:** `cp .env.example .env`, `docker compose up --build -d --wait`, `make e2e`, and upload `playwright-report` on failure.
+  - `docs/ARCHITECTURE.md`: the 8 answers from blueprint 5.7, the Mermaid diagrams (3.2, 3.5, 4.4, 4.5), the error matrix, assumptions, known limitations and improvements.
+  - Final README, plus DECISIONS and AI_DISCLOSURE.
+  - Hardening sweep:
+    - secret scan;
+    - `npm audit` (backend: node-pg-migrate's `glob`; frontend: 16 dev-only ESLint-tooling advisories);
+    - remove leftovers.
+  - Final check from a fresh `git clone` into the scratchpad.
+- **Notes for Phase 9:**
+  - CI's backend integration tests need `TEST_DATABASE_URL` with a database name ending in `_test` (a guard enforces it).
+  - The e2e job needs `npx playwright install --with-deps chromium` on the Ubuntu runner.
+  - Known limitations to list:
+    - header-based demo identity, and the spoofable rate-limit key that comes with it;
+    - Haversine-only distance;
+    - polling instead of push;
+    - no payments;
+    - a driver cancelling sends the ride to `CANCELLED`, not back to the queue;
+    - CSP still needs `'unsafe-inline'` scripts;
+    - light theme only;
+    - landmarks only, no geocoding.
 - **Full build plan:** `/Users/akif.dev/.claude/plans/docs-assessment-pdf-docs-blueprint-md-i-federated-sunrise.md`
 
 ## Working agreements
@@ -245,5 +256,41 @@ The tests mock the API at the network level with MSW and use the app's real quer
 - **The tests use real timers with shortened intervals** rather than fake timers. That keeps them simple and fast, and the mutation check shows they still catch regressions.
 
 Next is **Phase 8**: Playwright end-to-end tests against the running stack. These are the main booking flow with a second browser acting as the driver, the cancel flow, and a forced failure followed by a retry that creates exactly one ride (blueprint tests 21–23). Say continue when you're ready.
+
+--- PHASE 8 SUMMARY ---
+Phase 8 is finished and committed as `test(e2e): Playwright end-to-end tests against the compose stack (phase 8)`. Stopping here for your review.
+
+**What the end-to-end tests cover:** real Chromium browsers against the running Docker stack, 5 tests in about 23 s.
+
+| Test | What it proves |
+|---|---|
+| 21, main flow | A rider books Liberty Market → Lahore Fort and sees the fare and ETA. A driver in a second browser goes online, accepts, starts and completes. The rider page follows every status to a receipt equal to the quoted fare, and the API agrees |
+| 22, cancel flow | The rider cancels after confirming, the ride disappears from a nearby driver's console, and the rider can book again |
+| 23, error and retry | The first request fails with a 500. Retry sends the same Idempotency-Key, and exactly one ride exists |
+| 23b, lost response (extra) | The API commits the ride, but the browser never gets the answer. Retry gets a *replay* of that same ride, not a second booking |
+| Driver race (extra) | Two drivers press Accept at the same moment. Exactly one wins; the other sees "Another driver took this ride." |
+
+**How I checked them**
+- `make e2e` passed 5/5 four times, including twice in a row as the plan requires.
+- **Any order, no reset needed:** each test cleans up after itself. I confirmed it by running the files one at a time, in reverse and then forward order, with the data reset turned off.
+- **Mutation check:** I rebuilt the frontend so it sends a new Idempotency-Key on every retry, and both test 23 variants failed.
+  - This is why 23b matters. Without idempotency, the rider would *still* end up on the right ride: the database allows one active ride per rider, so the duplicate gets a 409 and the UI follows it.
+  - So "exactly one ride" alone can't tell working idempotency from broken. 23b checks for the replay itself.
+
+**Found during the phase**
+- **Ambiguous locator:** the first run failed test 23. Next's production build includes an invisible `role="alert"` route announcer, so a bare "find the alert" locator matched two elements. I fixed the test's locator; the app was unchanged.
+- **Hidden dependency on the reset:** test 21 relied on the reset to start with its driver offline. It now works from either state.
+
+**Choice worth a look** (DECISIONS D31)
+- The tests run against the real Docker images rather than a dev server, one at a time because they share a database. There are no automatic retries, so flakiness stays visible.
+
+Next is **Phase 9**, the last one:
+- GitHub Actions CI with backend, frontend and E2E jobs. The frontend job includes a check that the frontend's API types still match the backend's spec.
+- `docs/ARCHITECTURE.md`, answering the eight questions with diagrams.
+- A final README.
+- A secret scan and the `npm audit` follow-ups.
+- A final check from a fresh clone.
+
+Say continue when you're ready.
 
 === END OF COMPLETE HISTORY ===

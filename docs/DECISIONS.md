@@ -210,6 +210,20 @@ The blueprint fixes the transition table and the error codes. These rules fill i
   - pausing polling in hidden tabs;
   - "Retry now" being clickable during the backoff.
 
+## D31. End-to-end tests run against the Compose stack, one at a time, and each cleans up after itself
+- **Decision:** Playwright runs Chromium against the running Docker stack (`make up`), not a dev server.
+  - **Run order:** `workers: 1` and no automatic retries.
+  - **Global setup:** checks that the API and web app are reachable (with a "run `make up`" hint), then resets the demo data with `docker compose exec -T backend node dist/seed/seed.js --reset`. `E2E_RESET_CMD` can replace or skip that.
+  - **Isolation:** each test uses its own rider and its own trip, and its `afterEach` cancels any ride it left active. Test 21 works whether its driver starts offline or online.
+  - **Two extras beyond blueprint 21–23:**
+    - **23b, lost response:** `route.fetch()` sends the first `POST /rides` to the real API, which commits the ride. The browser then sees a connection reset. The test asserts that the retry is a `200` replay with `Idempotent-Replayed: true` and the same ride id.
+    - **A two-driver race in two browser contexts.**
+- **Why:**
+  - **Real images:** testing the images a reviewer actually starts catches Docker, CSP and CORS problems that a dev server would hide.
+  - **Running one at a time:** the shared database makes parallel tests interfere through driver availability. Per-test cleanup keeps the suite valid in any order and without a reset, which was checked by running the files individually in reverse and forward order with the reset disabled.
+  - **Why 23b matters:** blueprint 23's "exactly one ride" would also hold *without* idempotency. The one-active-ride unique index would answer a duplicate with `409 ACTIVE_RIDE_EXISTS`, and the UI would follow it to the existing ride. Only asserting the *replay* proves the Idempotency-Key path itself. Rebuilding the frontend so it sends a new key on every attempt makes both test 23 variants fail.
+- **Locators:** role- and test-id-based, scoped by text where needed. Next's production build renders its own empty `role="alert"` route announcer, so a bare `getByRole('alert')` is ambiguous.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

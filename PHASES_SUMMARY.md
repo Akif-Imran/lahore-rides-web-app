@@ -218,3 +218,39 @@ The tests mock the API at the network level with MSW and use the app's real quer
 - **The tests use real timers with shortened intervals** rather than fake timers. That keeps them simple and fast, and the mutation check shows they still catch regressions.
 
 Next is **Phase 8**: Playwright end-to-end tests against the running stack. These are the main booking flow with a second browser acting as the driver, the cancel flow, and a forced failure followed by a retry that creates exactly one ride (blueprint tests 21–23). Say continue when you're ready.
+
+--- PHASE 8 SUMMARY ---
+Phase 8 is finished and committed as `test(e2e): Playwright end-to-end tests against the compose stack (phase 8)`. Stopping here for your review.
+
+**What the end-to-end tests cover:** real Chromium browsers against the running Docker stack, 5 tests in about 23 s.
+
+| Test | What it proves |
+|---|---|
+| 21, main flow | A rider books Liberty Market → Lahore Fort and sees the fare and ETA. A driver in a second browser goes online, accepts, starts and completes. The rider page follows every status to a receipt equal to the quoted fare, and the API agrees |
+| 22, cancel flow | The rider cancels after confirming, the ride disappears from a nearby driver's console, and the rider can book again |
+| 23, error and retry | The first request fails with a 500. Retry sends the same Idempotency-Key, and exactly one ride exists |
+| 23b, lost response (extra) | The API commits the ride, but the browser never gets the answer. Retry gets a *replay* of that same ride, not a second booking |
+| Driver race (extra) | Two drivers press Accept at the same moment. Exactly one wins; the other sees "Another driver took this ride." |
+
+**How I checked them**
+- `make e2e` passed 5/5 four times, including twice in a row as the plan requires.
+- **Any order, no reset needed:** each test cleans up after itself. I confirmed it by running the files one at a time, in reverse and then forward order, with the data reset turned off.
+- **Mutation check:** I rebuilt the frontend so it sends a new Idempotency-Key on every retry, and both test 23 variants failed.
+  - This is why 23b matters. Without idempotency, the rider would *still* end up on the right ride: the database allows one active ride per rider, so the duplicate gets a 409 and the UI follows it.
+  - So "exactly one ride" alone can't tell working idempotency from broken. 23b checks for the replay itself.
+
+**Found during the phase**
+- **Ambiguous locator:** the first run failed test 23. Next's production build includes an invisible `role="alert"` route announcer, so a bare "find the alert" locator matched two elements. I fixed the test's locator; the app was unchanged.
+- **Hidden dependency on the reset:** test 21 relied on the reset to start with its driver offline. It now works from either state.
+
+**Choice worth a look** (DECISIONS D31)
+- The tests run against the real Docker images rather than a dev server, one at a time because they share a database. There are no automatic retries, so flakiness stays visible.
+
+Next is **Phase 9**, the last one:
+- GitHub Actions CI with backend, frontend and E2E jobs. The frontend job includes a check that the frontend's API types still match the backend's spec.
+- `docs/ARCHITECTURE.md`, answering the eight questions with diagrams.
+- A final README.
+- A secret scan and the `npm audit` follow-ups.
+- A final check from a fresh clone.
+
+Say continue when you're ready.

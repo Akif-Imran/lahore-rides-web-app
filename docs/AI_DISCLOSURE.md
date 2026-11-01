@@ -183,3 +183,25 @@ One entry per phase: what was generated, and how it was verified.
     - `CapEff` is 0 and `NoNewPrivs` is 1.
   - **Graceful shutdown:** `docker compose stop frontend` finished in about 0.2 s with exit code 143 (SIGTERM handled). The container came back healthy.
   - **Browser run against the containerised frontend:** the same 16-check Playwright script as Phase 6 passed twice, against the running stack and again against the stack rebuilt from scratch, with only the four console errors the script causes on purpose. The frontend container logged no errors, including no read-only filesystem errors.
+
+### Phase 8: End-to-end tests (Playwright)
+- **Generated:**
+  - `frontend/playwright.config.ts`: Chromium only, tests run one at a time, no retries, traces and screenshots on failure;
+  - a global setup that checks the stack is reachable and resets the demo data;
+  - shared helpers: open a rider or driver context, choose a trip, request a ride, API checks, and per-test cleanup;
+  - five tests:
+    - blueprint 21, the main flow;
+    - blueprint 22, the cancel flow;
+    - blueprint 23, error and retry;
+    - 23b, response lost after the ride was committed;
+    - a two-driver race;
+  - the README section on running them.
+- **Verified:**
+  - **`make e2e` passed 5/5 in four full runs**, all against the Docker stack and each about 23 s: twice in a row as the plan requires, once after restoring from the mutation check below, and once more on the final code.
+  - **Order independence:** each spec file was run on its own, in reverse order and then in forward order, with the reset disabled (`E2E_RESET_CMD=`). All passed. This confirms the per-test cleanup, and that test 21 copes with its driver already being online from an earlier run.
+  - **End-to-end mutation check:** the frontend image was rebuilt with the client minting a new Idempotency-Key on every attempt. Both test 23 variants failed, because the retry carried a different key. 23b would otherwise have looked fine to a rider: the backend's one-active-ride rule answers the duplicate with 409 and the UI follows it to the existing ride. Asserting the `200` replay is what catches it. The source was restored from git, the image rebuilt, and the suite passed again.
+  - **A first-run failure, investigated:** both test 23 variants failed on the first run with a Playwright strict-mode error. `getByRole('alert')` also matched Next's empty `role="alert"` route announcer, which only exists in production builds. The fix was to scope the locator by the banner's text; the app was unchanged.
+  - **What the extra tests check on the real stack:**
+    - **lost response (23b):** the ride was committed (`201`), the browser saw a connection reset, the retry was a `200` with `Idempotent-Replayed: true` and the same ride id, and the API reports exactly that ride as the rider's active ride;
+    - **driver race:** exactly one browser shows "Ride accepted" and the other "Another driver took this ride.", and the API confirms the winner is the ride's driver.
+  - **Gates unchanged:** frontend lint, typecheck, format check and 131 unit/component tests pass. The E2E files are type-checked as part of `npm run typecheck`.
