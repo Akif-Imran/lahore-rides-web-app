@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+
+/* Light theme only; system font stack (no web-font download at build or run time). */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-slate-50);
+}
