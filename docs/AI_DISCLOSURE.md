@@ -246,3 +246,49 @@ One entry per phase: what was generated, and how it was verified.
       - Playwright 5/5;
       - Swagger UI, `/docs-json`, readiness and both app pages returned 200.
   - **A mistake during verification:** to run the README's `curl` block inside the clone, I extracted everything after its first line. That also captured the README's *later* blocks, so the backend dev instructions ran too, ending in the long-running `npm run start:dev`. It touched only the throwaway clone and its own demo database (a no-op migrate and an idempotent seed). I stopped the stray processes and restored the main stack.
+
+### Onboarding suite (after Phase 9): system guide, README, setup.sh
+- **Generated:**
+  - `docs/SYSTEM_GUIDE.md`:
+    - a glossary (domain, concurrency, API and operations terms);
+    - a module map;
+    - a breakdown of seven core modules: state machine, transactions and concurrency control, idempotency, auth, rate limiting, error handling, expiry sweeper;
+    - ten Mermaid diagrams: the request pipeline plus eight use-case sequence diagrams with green and red paths;
+    - an endpoint-to-module map, and a table of every rejection.
+  - The rewritten `README.md`:
+    - a prerequisites checklist with a verify command for each item;
+    - features (state machine, concurrency control, ACID transactions);
+    - setup by one command, manual Docker and host development;
+    - a full environment-variable reference and troubleshooting;
+    - every npm script and Make target;
+    - testing and reliability.
+  - `setup.sh`, and the `make setup` / `make setup-dev` targets.
+- **Verified:**
+  - **The guide matches the code.** Before writing, the request pipeline and every rejection were read from the source: guard order, `ActorGuard`, the throttler config, the `decide*` functions, `assertDriverCanAccept`, the compare-and-swap and expiry SQL, the error mapper and the exception filter. While writing, the remaining specifics were checked again, and two details were corrected:
+    - path ids must be UUID **v4** (field code `INVALID_UUID`);
+    - a lock-timeout test is in `errors.int-spec.ts`, not `database-constraints.int-spec.ts`.
+
+    Every test file named in the README was confirmed by grep to contain what it claims.
+  - **Diagrams:** all 13 across the guide and ARCHITECTURE.md render with mermaid 12.2.0 in headless Chromium. Viewing the request-a-ride diagram as an image showed its closing note running out of the frame, so the long notes are now line-broken.
+  - **Links:** every internal anchor in the README and the guide resolves to a heading, the cross-file anchor into ARCHITECTURE.md resolves, and every linked file exists. The README's API walkthrough is the exact block verified in Phase 9.
+  - **`setup.sh` static checks:** `bash -n` with macOS's `/bin/bash` 3.2.57, and shellcheck v0.11.0 at its strictest level. Its first findings (an unused loop variable, backticks in a single-quoted message) were fixed, and it now reports nothing.
+  - **`setup.sh` behaviour,** every case run with bash 3.2. Each failure exits 1 with its specific fix:
+    - an unknown option;
+    - Docker not installed (simulated by a `PATH` without docker);
+    - the daemon unreachable (`DOCKER_HOST` pointing at a missing socket);
+    - Compose too old (a shim reporting 2.12.2; the real one reports 5.6.0, so the numeric comparison matters);
+    - `--install-deps` without Node;
+    - port 3000 taken by another program, which was named as "Python (pid …)";
+    - an empty `POSTGRES_PASSWORD`.
+
+    Consistency warnings were checked too: a password with URL-special characters, and a frontend port missing from `CORS_ORIGINS`.
+  - **`setup.sh` happy paths:**
+    - a re-run against the running stack: `.env` files kept, ports recognised as the project's own, verified in 8 s;
+    - a **first run in a fresh clone** with `--reset --install-deps`: `.env` files created, stack built and verified, `npm ci` for both apps, 26 s with a warm Docker cache;
+    - restoring the main stack from stopped.
+
+    From the clone set up by the script, `make test-backend` (453 + 107), `make test-frontend` (131) and `make e2e` (5/5) all passed.
+  - **A bug found by testing.** Bash 3.2 fires the ERR trap for a failing command substitution even inside an `if` when the substitution redirects output (`if ! x="$(cmd 2>&1 >/dev/null)"`). As a result, "daemon not running" printed a spurious "stopped unexpectedly" line before the real message. A minimal script confirmed the quirk. The fix: failures are now tested with plain commands, and output is captured with `|| true` inside the substitution, explained in a comment in the script.
+  - **Two cosmetic fixes:**
+    - the log path had a double slash, because macOS's `$TMPDIR` ends in `/`;
+    - `npm start` with Next's standalone output was checked: it serves but warns, and the README scripts table says so.

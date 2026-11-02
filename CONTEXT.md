@@ -7,21 +7,15 @@ Continuity file for future sessions and context compactions. Read this first, th
   - CI is `.github/workflows/ci.yml`.
   - The architecture answers are in `docs/ARCHITECTURE.md`.
   - A fresh-clone check passed every suite.
-- **In progress:** the user's onboarding suite, requested after Phase 8 and done after Phase 9:
-  1. **A glossary and module architecture doc:**
-     - terms such as "expiry sweeper" and "concurrency control";
-     - the modules: state machine, expiry sweeper, rate limiting, error handling, auth, idempotency.
-  2. **Mermaid sequence diagrams** of how requests traverse the backend modules, with green and red paths and endpoint mappings.
-  3. **A plug-and-play README rewrite** with:
-     - a prerequisites checklist and a features summary (state machine, concurrency control, ACID);
-     - setup for the database, frontend, backend, Docker and env vars;
-     - every npm script explained;
-     - testing and reliability.
-  4. **A root `setup.sh`:** pre-flight checks (Docker installed and running, Compose, Node), `.env` files populated, the stack started and verified healthy, with graceful, actionable failure messages.
-- **Notes for the onboarding suite:**
-  - Mermaid: no `;` inside sequence messages (it ends a statement).
-  - Validate every diagram by rendering it. A throwaway renderer is in the session scratchpad: `mermaid-check/check.mjs`, using mermaid 12.2.0 and Playwright's Chromium.
-  - `docs/blueprint.md` diagrams 3.5 and 4.5 do not parse; leave that file untouched.
+- **Also done: the onboarding suite** the user requested after Phase 8, completed after Phase 9 as its own commit:
+  - `docs/SYSTEM_GUIDE.md`: glossary, modules, request flows with green and red paths;
+  - the plug-and-play `README.md`;
+  - a root `setup.sh` (`make setup` / `make setup-dev`).
+- **Nothing is pushed.** CI (`.github/workflows/ci.yml`) has not run on GitHub yet.
+- **Notes for any future work:**
+  - **Mermaid:** no `;` inside sequence messages, because it ends a statement. Break long notes with `<br/>`. Validate every diagram by rendering it.
+  - **Blueprint diagrams:** `docs/blueprint.md` diagrams 3.5 and 4.5 do not parse. Leave that file untouched: it is the user's source spec.
+  - **`setup.sh`** must stay compatible with bash 3.2 (macOS `/bin/bash`). In bash 3.2, a failing `$(...)` that redirects output fires the ERR trap even inside an `if`, so capture output with `|| true` and test failure with plain commands.
 - **Full build plan:** `/Users/akif.dev/.claude/plans/docs-assessment-pdf-docs-blueprint-md-i-federated-sunrise.md`
 
 ## Working agreements
@@ -319,5 +313,44 @@ It passes `actionlint`. I replayed the backend and frontend jobs locally, and th
 - **My own slip:** while testing the README snippet in the clone, my extraction also ran the README's later dev-server block. I stopped it; it only touched the throwaway clone.
 
 Next is the onboarding suite you asked for: the glossary and module guide, the request-flow diagrams, the plug-and-play README and `setup.sh`.
+
+--- ONBOARDING SUITE SUMMARY (after Phase 9) ---
+The onboarding suite is finished and committed as `docs: onboarding suite - system guide, plug-and-play README and setup.sh`. With it, everything planned and requested is done.
+
+**Tasks 1 and 2: `docs/SYSTEM_GUIDE.md`**
+- **Glossary:** domain terms, concurrency terms (concurrency control, row lock, lock order, compare-and-swap, partial unique index, ACID transaction, idempotency, expiry sweeper) and API and operations terms. Each says where it lives in the code.
+- **Module map, plus a deep dive on seven modules:** state machine, transactions and concurrency control, idempotency, auth, rate limiting, error handling and the expiry sweeper. Each covers its responsibility, how it works, what it rejects (status and code), its configuration, and the tests that prove it.
+- **Request flows:**
+  - one pipeline diagram showing every stage where a request can be rejected;
+  - a sequence diagram per use case, each with labelled green and red branches and the endpoints it hits: fare estimate, request a ride, follow a ride, driver online and offers, accept, start and complete, cancel, and the expiry sweeper;
+  - a map from each endpoint to the modules it passes through;
+  - a table of every rejection.
+
+**Task 3: the README**, rewritten around the five parts you asked for:
+1. a prerequisites checklist, with a command to verify each item;
+2. features, with the state machine, concurrency control and ACID transactions called out;
+3. setup three ways (one command, manual Docker, host development), with a full environment-variable reference and troubleshooting;
+4. every npm script and Make target explained;
+5. testing and reliability, organised by concurrency, booking and idempotency, state transitions, and rate limits.
+
+**Task 4: `setup.sh`** (also `make setup`). It runs five steps: pre-flight checks, env files, port checks, build and start, verify. Flags: `--install-deps`, `--reset`, `--help`.
+
+**How I checked**
+- **The guide against the code:** every claim was read from the code first, and two inaccuracies caught while writing were fixed (path ids must be UUID v4; which test file covers lock timeouts). All 13 diagrams across the docs render, and every internal link resolves.
+- **`setup.sh` statically:** it passes shellcheck with no findings, and runs under macOS's bash 3.2.
+- **`setup.sh` failure paths:** I triggered each one, and each stops with a specific fix:
+  - Docker missing, or the daemon down;
+  - Compose too old;
+  - no Node for `--install-deps`;
+  - a port taken by another program;
+  - an empty password;
+  - an unknown option.
+- **`setup.sh` on a first run:** in a fresh clone it finished in 26 s. From that clone, backend 453 + 107, frontend 131 and E2E 5/5 all passed.
+- **A real bug found by testing:** under bash 3.2, the "Docker isn't running" case printed a misleading "stopped unexpectedly" line before the real message. This is a bash 3.2 quirk with error traps; it's fixed and explained in the script.
+
+**Worth knowing**
+- **Only Docker is needed to run the app** with `setup.sh`. Node is needed just for tests and host development (`--install-deps`).
+- **Blueprint diagrams:** `docs/blueprint.md` still has two diagrams that don't render on GitHub. I left your source spec untouched; ARCHITECTURE.md has working versions.
+- **CI:** nothing is pushed, so CI will run for the first time on your first push.
 
 === END OF COMPLETE HISTORY ===

@@ -242,6 +242,22 @@ The blueprint fixes the transition table and the error codes. These rules fill i
   Both drift checks run there: the regenerated `openapi.json` and `api.gen.ts` must not differ from the committed ones. The workflow pins actions to their current major versions (`checkout`, `setup-node` and `upload-artifact` v7), takes Node from `.nvmrc`, has read-only `contents` permission, and cancels superseded runs. It passes `actionlint` 1.7.12, which also shellchecks every `run:` script.
 - **Why:** CI should fail for the same reasons a reviewer's machine would. The e2e job exercises the Docker images, the migrate job, CORS and the production CSP, which unit tests cannot see.
 
+## D34. Onboarding additions: `setup.sh` and a system guide
+- **Additions beyond the blueprint, requested after Phase 9:**
+  - a root `setup.sh` (also `make setup` and `make setup-dev`);
+  - `docs/SYSTEM_GUIDE.md` (glossary, module breakdown, request flows with green and red paths);
+  - a README restructured for onboarding.
+
+  The blueprint's README requirements are all still met. ARCHITECTURE.md stays the short answer to the assessment's eight questions, and the guide holds the detailed "how".
+- **`setup.sh` design:**
+  - **Plain bash, compatible with the bash 3.2 that macOS ships,** so it runs everywhere a reviewer might start: macOS, Linux and WSL2. It does no package installation and no `sudo`.
+  - **It wraps the documented commands** (`cp .env.example .env`, `docker compose up --build -d --wait`) rather than replacing them. The manual path stays valid, and CI uses it.
+  - **It never overwrites an existing `.env`, and reads `.env` as data,** never sourcing it.
+  - **Pre-flight checks fail with a specific fix:** Docker missing, the daemon down, a Linux socket permission problem, Compose too old, Node missing (only for `--install-deps`), a port taken (naming the process), an empty required value.
+  - **On a failed start** it prints the service states and the relevant logs, and recognises common causes: ports, disk, network.
+  - **Node is optional:** only Docker is needed to run the app; Node is needed only for host development and tests.
+- **Why:** first-run friction is where onboarding usually fails, and a wrong guess at a missing prerequisite costs more time than any code. Making each failure actionable, and keeping the plain commands as the source of truth, avoids hiding the setup behind a script.
+
 ## Kept exactly as the blueprint specifies
 - An idempotent replay of `POST /rides` returns `200` with `Idempotent-Replayed: true`, not the original `201`.
 - Lock order is always ride → driver.

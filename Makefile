@@ -6,6 +6,12 @@ COMPOSE := docker compose
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
+setup: ## One-command setup: checks, .env files, start and verify the stack (./setup.sh)
+	./setup.sh
+
+setup-dev: ## setup + npm dependencies for running tests and apps outside Docker
+	./setup.sh --install-deps
+
 env: ## Create .env from .env.example if it does not exist
 	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example")
 
@@ -45,4 +51,4 @@ openapi: ## Export the backend OpenAPI spec and regenerate frontend API types
 	cd backend && npm run openapi:export
 	cd frontend && npm run gen:api
 
-.PHONY: help env up down reset logs db seed seed-reset test-backend test-frontend e2e test openapi
+.PHONY: help setup setup-dev env up down reset logs db seed seed-reset test-backend test-frontend e2e test openapi
